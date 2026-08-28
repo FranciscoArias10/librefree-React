@@ -20,6 +20,7 @@ import { getTxtReaderHTML } from '../../reader/TxtReaderHTML';
 import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
 import { ReaderControlsModal } from '../../components/ReaderControlsModal';
 import { TTSControlBar } from '../../components/TTSControlBar';
+import { stopSpeech } from '../../services/ttsService';
 import { Book, ReadingSettings } from '../../types/book';
 import { Feather } from '@expo/vector-icons';
 
@@ -46,6 +47,8 @@ export default function ReaderScreen() {
   const [controlsVisible, setControlsVisible] = useState(false);
   const [ttsVisible, setTtsVisible] = useState(false);
   const [selectedText, setSelectedText] = useState<string>('');
+  const [currentPageText, setCurrentPageText] = useState<string>('');
+  const [pageLabel, setPageLabel] = useState<string>('Página 1');
 
   useEffect(() => {
     async function loadData() {
@@ -62,6 +65,13 @@ export default function ReaderScreen() {
           if (b.currentLocation) setCurrentCfi(b.currentLocation);
           if (b.currentChapter) setCurrentChapter(b.currentChapter);
 
+          if (b.currentChapter && b.currentChapter.toLowerCase().includes('página')) {
+            setPageLabel(b.currentChapter);
+          } else {
+            const fakePage = Math.max(1, Math.round(((b.progressPercentage || 0) / 100) * 350));
+            setPageLabel(`Página ${fakePage}`);
+          }
+
           const data = await readBookContent(b.filePath, b.format);
           setBookData(data);
         }
@@ -72,6 +82,11 @@ export default function ReaderScreen() {
       }
     }
     loadData();
+
+    // Cleanup function to stop speech when exiting the reader
+    return () => {
+      stopSpeech();
+    };
   }, [id]);
 
   const handleUpdateSettings = async (newSettings: Partial<ReadingSettings>) => {
@@ -90,13 +105,24 @@ export default function ReaderScreen() {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'LOCATION_CHANGED' || data.type === 'PROGRESS_UPDATE') {
-        const { cfi, page, percent, chapter } = data.payload;
-        if (percent !== undefined) setProgress(percent);
+        const { cfi, page, percent, chapter, progress: payloadProgress } = data.payload;
+        const actualPercent = percent !== undefined ? percent : payloadProgress;
+        
+        if (actualPercent !== undefined) setProgress(actualPercent);
         if (cfi) setCurrentCfi(String(cfi));
         if (chapter) setCurrentChapter(chapter);
 
+        if (chapter && chapter.toLowerCase().includes('página')) {
+          setPageLabel(chapter);
+        } else if (page) {
+          setPageLabel(`Página ${page}`);
+        } else if (actualPercent !== undefined) {
+          const fakePage = Math.max(1, Math.round((actualPercent / 100) * 350));
+          setPageLabel(`Página ${fakePage}`);
+        }
+
         if (book) {
-          const newProgress = percent !== undefined ? percent : progress;
+          const newProgress = actualPercent !== undefined ? actualPercent : progress;
           const newCfi = cfi ? String(cfi) : String(page || progress);
           const newChapter = chapter || (page ? `Página ${page}` : undefined);
           updateBookProgress(book.id, newProgress, newCfi, newChapter);
@@ -113,6 +139,8 @@ export default function ReaderScreen() {
         }
       } else if (data.type === 'TEXT_SELECTED') {
         setSelectedText(data.payload.text || '');
+      } else if (data.type === 'PAGE_TEXT_EXTRACTED') {
+        setCurrentPageText(data.payload.text || '');
       }
     } catch (e) {}
   };
@@ -227,8 +255,16 @@ export default function ReaderScreen() {
         />
       </View>
 
-      {/* Reader Bottom Navigation Bar */}
-      <View style={[styles.bottomBar, { borderTopColor: getTextColor() + '20' }]}>
+      {/* Reader Floating Bottom Navigation Bar */}
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor: settings.themeMode === 'dark' || settings.themeMode === 'oled' ? 'rgba(30, 30, 46, 0.94)' : 'rgba(255, 255, 255, 0.94)',
+            borderColor: getTextColor() + '22',
+          },
+        ]}
+      >
         <TouchableOpacity style={styles.pageBtn} onPress={handlePrevPage}>
           <Feather name="chevron-left" size={22} color={getTextColor()} />
         </TouchableOpacity>
@@ -237,7 +273,7 @@ export default function ReaderScreen() {
           <View style={[styles.progressTrack, { backgroundColor: getTextColor() + '20' }]}>
             <View style={[styles.progressFill, { width: `${progress}%` }]} />
           </View>
-          <Text style={[styles.progressLabel, { color: getTextColor() }]}>{Math.round(progress)}%</Text>
+          <Text style={[styles.progressLabel, { color: getTextColor() }]}>{pageLabel}</Text>
         </View>
 
         <TouchableOpacity style={styles.pageBtn} onPress={handleNextPage}>
@@ -248,7 +284,7 @@ export default function ReaderScreen() {
       {/* Floating TTS Control Bar */}
       {ttsVisible && (
         <TTSControlBar
-          currentText={selectedText || `Documento PDF ${book.title}`}
+          currentText={selectedText || currentPageText || `Leyendo libro ${book.title}`}
           onClose={() => setTtsVisible(false)}
         />
       )}
@@ -309,11 +345,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bottomBar: {
-    height: 50,
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
   },
   pageBtn: {
     padding: 8,

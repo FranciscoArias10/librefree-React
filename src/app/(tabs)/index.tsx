@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getAllBooks, toggleFavorite, deleteBook } from '../../services/database';
-import { importBookFromDevice } from '../../services/fileScanner';
+import { pickMultipleBooksByFormat, bulkImportBooks } from '../../services/fileScanner';
 import { BookCard } from '../../components/BookCard';
 import { BackgroundCoverProcessor } from '../../components/BackgroundCoverProcessor';
 import { Book } from '../../types/book';
@@ -72,13 +72,19 @@ export default function BookshelfScreen() {
 
   const handleImportBook = async () => {
     try {
-      const newBook = await importBookFromDevice();
-      if (newBook) {
-        Alert.alert('¡Libro Importado!', `Se ha añadido "${newBook.title}" a tu estantería.`);
+      const results = await pickMultipleBooksByFormat('ALL');
+      if (results.length === 0) return;
+      
+      const imported = await bulkImportBooks(results);
+      if (imported.length > 0) {
+        Alert.alert(
+          '¡Libros Importados!',
+          `Se agregaron ${imported.length} libros a tu estantería.`
+        );
         fetchBooks();
       }
     } catch (err) {
-      Alert.alert('Error', 'No se pudo importar el archivo.');
+      Alert.alert('Error', 'No se pudo completar la importación.');
     }
   };
 
@@ -154,7 +160,6 @@ export default function BookshelfScreen() {
           { key: 'FAVORITES', label: '★ Favoritos' },
           { key: 'EPUB', label: 'EPUB' },
           { key: 'PDF', label: 'PDF' },
-          { key: 'TXT', label: 'Texto' },
         ].map((f) => (
           <TouchableOpacity
             key={f.key}
@@ -301,7 +306,7 @@ const styles = StyleSheet.create({
   },
   shelfListContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 28,
+    paddingBottom: 95,
   },
   shelfColumnWrapper: {
     justifyContent: 'space-between',

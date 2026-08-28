@@ -100,6 +100,19 @@ export default function FileExplorerScreen() {
     }
   };
 
+  const handleManualPick = async () => {
+    try {
+      const results = await pickMultipleBooksByFormat('ALL');
+      if (results.length === 0) return;
+      
+      setScannedResults(results);
+      setIsResultsModalVisible(true);
+      processNextThumbnail(0, results);
+    } catch (e) {
+      Alert.alert('Error', 'No se pudieron seleccionar los archivos manualmente.');
+    }
+  };
+
   const processNextThumbnail = async (index: number, list: ScannedFile[]) => {
     if (index >= list.length || index >= 30) {
       setProcessingHtml(null);
@@ -235,10 +248,17 @@ export default function FileExplorerScreen() {
               </Text>
             </View>
           ) : (
-            <TouchableOpacity style={[styles.scanBtn, { backgroundColor: theme.accent }]} onPress={handleStartAutoScan}>
-              <Feather name="search" size={18} color={theme.accentText} style={{ marginRight: 8 }} />
-              <Text style={[styles.scanBtnText, { color: theme.accentText }]}>Escanear Celular Automáticamente</Text>
-            </TouchableOpacity>
+            <View style={{ gap: 10 }}>
+              <TouchableOpacity style={[styles.scanBtn, { backgroundColor: theme.accent }]} onPress={handleStartAutoScan}>
+                <Feather name="search" size={18} color={theme.accentText} style={{ marginRight: 8 }} />
+                <Text style={[styles.scanBtnText, { color: theme.accentText }]}>Escanear Celular Automáticamente</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={[styles.scanBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.accent }]} onPress={handleManualPick}>
+                <Feather name="folder" size={18} color={theme.accent} style={{ marginRight: 8 }} />
+                <Text style={[styles.scanBtnText, { color: theme.accent }]}>Explorar Archivos Manualmente</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -401,7 +421,7 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 95,
   },
   header: {
     marginBottom: 16,

@@ -91,7 +91,7 @@ export default function SettingsScreen() {
               <Feather name="user" size={24} color="#FFFFFF" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: theme.textCard }]}>Usuario eReader</Text>
+              <Text style={[styles.settingTitle, { color: theme.textCard }]}>Usuario LibreFree</Text>
               <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>usuario@librefree.org</Text>
             </View>
             <View style={[styles.cloudBadge, { backgroundColor: theme.bgBadgeCloud }]}>
@@ -158,7 +158,7 @@ export default function SettingsScreen() {
 
         {/* App info */}
         <View style={styles.infoFooter}>
-          <Text style={[styles.infoAppTitle, { color: theme.textSecondary }]}>LibreFree eReader</Text>
+          <Text style={[styles.infoAppTitle, { color: theme.textSecondary }]}>LibreFree</Text>
           <Text style={[styles.infoAppVersion, { color: theme.textMuted }]}>Versión 1.0.0 (Expo SDK v54)</Text>
         </View>
       </ScrollView>
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 95,
   },
   title: {
     fontSize: 22,

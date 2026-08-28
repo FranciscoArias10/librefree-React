@@ -270,13 +270,57 @@ export function getEpubReaderHTML(
           generateEpubCover();
           extractAllEpubText();
 
+          // Generate locations in background so page numbers and percentages work accurately
+          book.ready.then(function() {
+            return book.locations.generate(1024);
+          }).then(function() {
+            if (rendition && rendition.currentLocation()) {
+              var loc = rendition.currentLocation();
+              if (loc && loc.start) {
+                var percent = Math.round((book.locations.percentageFromCfi(loc.start.cfi) || 0) * 100);
+                var page = book.locations.locationFromCfi(loc.start.cfi) || 1;
+                var total = book.locations.total || 100;
+                var chStr = "Página " + page + " de " + total;
+                sendToRN("LOCATION_CHANGED", { cfi: loc.start.cfi, percent: percent, page: page, totalPages: total, chapter: chStr });
+              }
+            }
+          }).catch(function(e) {
+            console.warn("Error generando ubicaciones EPUB:", e);
+          });
+
           // Location Change Handler
           rendition.on("relocated", function(location) {
             if (location && location.start) {
               var cfi = location.start.cfi;
-              var percent = Math.round((location.start.percentage || 0) * 100);
-              var chapter = location.start.href ? "Capítulo" : "";
-              sendToRN("LOCATION_CHANGED", { cfi: cfi, percent: percent, chapter: chapter });
+              var percent = 0;
+              var page = 1;
+              var total = 100;
+
+              if (book && book.locations && book.locations.total > 0) {
+                percent = Math.round((book.locations.percentageFromCfi(cfi) || 0) * 100);
+                page = book.locations.locationFromCfi(cfi) || 1;
+                total = book.locations.total || 100;
+              } else if (location.start.displayed && location.start.displayed.page) {
+                page = location.start.displayed.page;
+                total = location.start.displayed.total || 100;
+                percent = Math.round((page / total) * 100);
+              } else if (location.start.index !== undefined && book.spine && book.spine.items) {
+                var spineTotal = book.spine.items.length || 1;
+                page = location.start.index + 1;
+                total = spineTotal;
+                percent = Math.round((page / spineTotal) * 100);
+              }
+
+              var chapterStr = "Página " + page + (total > 1 ? (" de " + total) : "");
+              sendToRN("LOCATION_CHANGED", { cfi: cfi, percent: percent, page: page, totalPages: total, chapter: chapterStr });
+
+              try {
+                var iframe = document.querySelector('iframe');
+                if (iframe && iframe.contentDocument) {
+                  var text = iframe.contentDocument.body.innerText || iframe.contentDocument.body.textContent || "";
+                  sendToRN("PAGE_TEXT_EXTRACTED", { text: text.trim().substring(0, 5000) });
+                }
+              } catch(e) {}
             }
           });
 

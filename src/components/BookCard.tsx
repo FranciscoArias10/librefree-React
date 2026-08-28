@@ -94,7 +94,9 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onPress, onLongPress, 
           <View style={[styles.progressBarBackground, { backgroundColor: theme.bgChip }]}>
             <View style={[styles.progressBarFill, { backgroundColor: theme.accent, width: `${Math.min(100, Math.max(0, book.progressPercentage))}%` }]} />
           </View>
-          <Text style={[styles.progressText, { color: theme.textMuted }]}>{Math.round(book.progressPercentage)}%</Text>
+          <Text style={[styles.progressText, { color: theme.textMuted }]} numberOfLines={1}>
+            {book.currentChapter || `${Math.round(book.progressPercentage)}%`}
+          </Text>
         </View>
       </View>
     </TouchableOpacity>

@@ -66,6 +66,8 @@ export function getTxtReaderHTML(
         }
       }
 
+      sendToRN('PAGE_TEXT_EXTRACTED', { text: fullText.substring(0, 10000) });
+
       window.addEventListener('scroll', function() {
         var totalHeight = document.documentElement.scrollHeight - window.innerHeight;
         if (totalHeight > 0) {

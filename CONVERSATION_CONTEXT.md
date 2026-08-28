@@ -107,3 +107,14 @@ npx eas build --profile development --platform android
 ---
 
 *Este archivo contiene el 100% del contexto del proyecto y servirá de referencia inmediata para cualquier ajuste futuro.*
+
+
+
+cosas por hacer 
+
+ver que hacer con lo de las voces 
+arreglar el marcador de paginas 
+agregar la etiqueta a los libros 
+ver que hacer con las cuentas y la base de datos 
+definir las configuraciones por los diferentes archivos pdf y ebup 
+funcionamiento de cambio de pagina con los botones de al lado del contador de paginas en los pdf y ebup
