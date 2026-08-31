@@ -14,7 +14,7 @@ import {
   PanResponder,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { getAllBooks } from '../../services/database';
+import { getAllBooks, updateBookProgress } from '../../services/database';
 import { extractTextFromBook } from '../../services/fileScanner';
 import { Book } from '../../types/book';
 import {
@@ -76,20 +76,37 @@ export default function AudiobooksScreen() {
     setActiveBook(book);
     setIsFullPlayerVisible(true);
     setIsPlaying(false);
-    setCurrentChunkIndex(0);
-    setTotalChunks(1);
+
+    let savedPos = 0;
+    if (book.currentLocation) {
+      const parsed = parseInt(book.currentLocation, 10);
+      if (!isNaN(parsed) && parsed > 0) savedPos = parsed;
+    }
 
     if (book.format === 'AUDIOBOOK') {
-      loadAudiobookTrack(book.filePath, (status: PlaybackStatus) => {
-        setIsPlaying(status.isPlaying);
-        if (status.positionMillis) setAudioPosition(status.positionMillis);
-        if (status.durationMillis) setAudioDuration(status.durationMillis);
-      });
+      setAudioPosition(savedPos);
+      setAudioDuration(book.totalPagesOrDuration || 0);
+
+      loadAudiobookTrack(
+        book.filePath,
+        (status: PlaybackStatus) => {
+          setIsPlaying(status.isPlaying);
+          if (status.positionMillis !== undefined) {
+            setAudioPosition(status.positionMillis);
+          }
+          if (status.durationMillis) {
+            setAudioDuration(status.durationMillis);
+          }
+        },
+        savedPos
+      );
     } else {
       // PDF, EPUB, TXT -> Full TTS Generation
       try {
         setIsGenerating(true);
         const textToRead = await extractTextFromBook(book);
+
+        setCurrentChunkIndex(savedPos);
 
         startTTSBook(
           textToRead,
@@ -99,11 +116,16 @@ export default function AudiobooksScreen() {
             setTotalChunks(total);
             setCurrentTextSnippet(snippet);
             setIsPlaying(true);
+
+            // Save TTS progress continuously to SQLite
+            const progressPct = Math.min(100, Math.round(((index + 1) / total) * 100));
+            updateBookProgress(book.id, progressPct, String(index), `Fragmento ${index + 1} de ${total}`);
           },
           () => {
             setIsPlaying(false);
             setCurrentTextSnippet('Lectura finalizada.');
-          }
+          },
+          savedPos
         );
       } catch (err) {
         console.error('Error generando audiolibro:', err);
@@ -120,6 +142,15 @@ export default function AudiobooksScreen() {
       if (isPlaying) {
         await pauseAudio();
         setIsPlaying(false);
+        if (audioDuration > 0) {
+          const pct = Math.min(100, Math.round((audioPosition / audioDuration) * 100));
+          await updateBookProgress(
+            activeBook.id,
+            pct,
+            String(Math.round(audioPosition)),
+            `Minuto ${formatTime(audioPosition / 1000)}`
+          );
+        }
       } else {
         await playAudio();
         setIsPlaying(true);
@@ -128,6 +159,15 @@ export default function AudiobooksScreen() {
       if (isPlaying) {
         pauseTTS();
         setIsPlaying(false);
+        if (totalChunks > 0) {
+          const pct = Math.min(100, Math.round(((currentChunkIndex + 1) / totalChunks) * 100));
+          await updateBookProgress(
+            activeBook.id,
+            pct,
+            String(currentChunkIndex),
+            `Fragmento ${currentChunkIndex + 1} de ${totalChunks}`
+          );
+        }
       } else {
         resumeTTS();
         setIsPlaying(true);
@@ -165,11 +205,27 @@ export default function AudiobooksScreen() {
       const targetMs = ratio * audioDuration;
       setAudioPosition(targetMs);
       seekAudio(targetMs);
+      if (activeBook && audioDuration > 0) {
+        const pct = Math.min(100, Math.round((targetMs / audioDuration) * 100));
+        updateBookProgress(
+          activeBook.id,
+          pct,
+          String(Math.round(targetMs)),
+          `Minuto ${formatTime(targetMs / 1000)}`
+        );
+      }
     } else {
-      if (totalChunks > 0) {
+      if (totalChunks > 0 && activeBook) {
         const targetChunk = Math.min(totalChunks - 1, Math.floor(ratio * totalChunks));
         setCurrentChunkIndex(targetChunk);
         jumpToTTSChunk(targetChunk);
+        const pct = Math.min(100, Math.round(((targetChunk + 1) / totalChunks) * 100));
+        updateBookProgress(
+          activeBook.id,
+          pct,
+          String(targetChunk),
+          `Fragmento ${targetChunk + 1} de ${totalChunks}`
+        );
       }
     }
   };

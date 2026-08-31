@@ -38,11 +38,12 @@ export async function startTTSBook(
   fullText: string,
   rate: number = 1.0,
   onProgress?: (index: number, total: number, text: string) => void,
-  onFinish?: () => void
+  onFinish?: () => void,
+  initialChunkIndex: number = 0
 ) {
   stopTTS();
   chunks = splitTextIntoChunks(fullText);
-  currentIndex = 0;
+  currentIndex = chunks.length > 0 ? Math.min(Math.max(0, initialChunkIndex), chunks.length - 1) : 0;
   currentRate = rate;
   onProgressCallback = onProgress || null;
   onFinishCallback = onFinish || null;

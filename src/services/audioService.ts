@@ -28,7 +28,8 @@ export async function setupAudioSession(): Promise<void> {
 
 export async function loadAudiobookTrack(
   uriOrFilePath: string,
-  onStatusUpdate?: (status: PlaybackStatus) => void
+  onStatusUpdate?: (status: PlaybackStatus) => void,
+  initialPositionMillis: number = 0
 ): Promise<void> {
   await setupAudioSession();
   
@@ -40,13 +41,12 @@ export async function loadAudiobookTrack(
   statusUpdateCallback = onStatusUpdate || null;
 
   try {
-    // If uri is local asset or http or file path
     const isRemote = uriOrFilePath.startsWith('http') || uriOrFilePath.startsWith('file://');
     const source = isRemote ? { uri: uriOrFilePath } : { uri: uriOrFilePath };
 
     const { sound } = await Audio.Sound.createAsync(
       source,
-      { shouldPlay: false, rate: 1.0 },
+      { shouldPlay: false, positionMillis: Math.max(0, initialPositionMillis), rate: 1.0 },
       onPlaybackStatusUpdate
     );
 
