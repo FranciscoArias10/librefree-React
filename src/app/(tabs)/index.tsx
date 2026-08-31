@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
   },
   shelfListContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 95,
+    paddingBottom: 110,
   },
   shelfColumnWrapper: {
     justifyContent: 'space-between',

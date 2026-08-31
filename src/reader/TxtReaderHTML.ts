@@ -76,6 +76,10 @@ export function getTxtReaderHTML(
         }
       });
 
+      document.addEventListener('click', function() {
+        sendToRN('TOGGLE_BARS', {});
+      });
+
       document.addEventListener('selectionchange', function() {
         var selection = window.getSelection().toString().trim();
         if (selection.length > 0) {

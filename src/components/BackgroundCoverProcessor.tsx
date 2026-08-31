@@ -46,7 +46,7 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
         if (data.content && data.content.length > 5) {
           setCurrentBook({ id: row.id, filePath: row.filePath, format: row.format });
           if (row.format === 'PDF') {
-            setHtmlSource(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, false));
+            setHtmlSource(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, true));
           } else if (row.format === 'EPUB') {
             setHtmlSource(getEpubReaderHTML(data.content, data.isBase64, undefined, DEFAULT_SETTINGS));
           }
@@ -74,6 +74,9 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
         if (coverPath.length > 50) {
           await saveBookCover(currentBook.id, coverPath);
           if (onCoverGenerated) onCoverGenerated();
+          setCurrentBook(null);
+          setHtmlSource(null);
+          setTimeout(checkPendingBooks, 100);
         }
       } else if ((data.type === 'FULL_PDF_TEXT' || data.type === 'FULL_EPUB_TEXT') && currentBook && data.payload?.text) {
         const text = data.payload.text;
@@ -81,7 +84,7 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
           await saveExtractedBookText(currentBook.id, text);
           setCurrentBook(null);
           setHtmlSource(null);
-          setTimeout(checkPendingBooks, 500);
+          setTimeout(checkPendingBooks, 100);
         }
       }
     } catch (e) {}

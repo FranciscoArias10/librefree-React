@@ -309,7 +309,14 @@ export async function readBookContent(filePath: string, format: BookFormat): Pro
       });
       return { content: base64Data, isBase64: true };
     } else if (format === 'PDF') {
-      return { content: normalizedPath, isBase64: false };
+      try {
+        const base64Data = await FileSystem.readAsStringAsync(normalizedPath, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return { content: base64Data, isBase64: true };
+      } catch (e) {
+        return { content: normalizedPath, isBase64: false };
+      }
     } else {
       const textContent = await FileSystem.readAsStringAsync(normalizedPath, {
         encoding: FileSystem.EncodingType.UTF8,

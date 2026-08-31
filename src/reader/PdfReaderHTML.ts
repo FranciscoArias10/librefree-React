@@ -340,7 +340,12 @@ export function getPdfReaderHTML(
 
           var startP = Math.min(totalPages, Math.max(1, currentPage));
           renderPage(startP);
-          extractAllText();
+
+          if (!onlyFirstPage) {
+            setTimeout(function() {
+              extractAllText();
+            }, 1200);
+          }
 
         } catch (err) {
           document.getElementById('loading').style.display = 'none';
@@ -387,6 +392,8 @@ export function getPdfReaderHTML(
         }
       }, false);
 
+      var singleTapTimeout = null;
+
       document.addEventListener('touchend', function(e) {
         if (e.touches.length === 0) {
           isPinching = false;
@@ -394,27 +401,30 @@ export function getPdfReaderHTML(
           initialScale = currentScale;
         }
 
-        // Double tap handler
+        // Tap & Swipe handler
         if (e.changedTouches.length === 1 && !isPinching) {
           var now = Date.now();
+          var touchEndX = e.changedTouches[0].clientX;
+          var touchEndY = e.changedTouches[0].clientY;
+          var diffX = touchEndX - touchStartX;
+          var diffY = touchEndY - touchStartY;
+
           if (now - lastTapTime < 280) {
+            // Double tap -> Zoom toggle
+            if (singleTapTimeout) clearTimeout(singleTapTimeout);
             if (currentScale > 1.1) {
               resetZoom();
             } else {
               currentScale = 2.0;
               updateTransform();
             }
-          }
-          lastTapTime = now;
-
-          // Page swipe flip ONLY when NOT zoomed in
-          if (currentScale <= 1.05) {
-            var touchEndX = e.changedTouches[0].clientX;
-            var touchEndY = e.changedTouches[0].clientY;
-            var diffX = touchEndX - touchStartX;
-            var diffY = touchEndY - touchStartY;
-
-            if (Math.abs(diffX) > 45 && Math.abs(diffX) > Math.abs(diffY)) {
+          } else {
+            // Single tap check vs Swipe check
+            if (Math.abs(diffX) < 12 && Math.abs(diffY) < 12) {
+              singleTapTimeout = setTimeout(function() {
+                sendToRN("TOGGLE_BARS", {});
+              }, 220);
+            } else if (currentScale <= 1.05 && Math.abs(diffX) > 45 && Math.abs(diffX) > Math.abs(diffY)) {
               if (diffX < 0) {
                 nextPage();
               } else {
@@ -422,6 +432,7 @@ export function getPdfReaderHTML(
               }
             }
           }
+          lastTapTime = now;
         }
       }, false);
 

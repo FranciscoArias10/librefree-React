@@ -118,3 +118,4 @@ agregar la etiqueta a los libros
 ver que hacer con las cuentas y la base de datos 
 definir las configuraciones por los diferentes archivos pdf y ebup 
 funcionamiento de cambio de pagina con los botones de al lado del contador de paginas en los pdf y ebup
+

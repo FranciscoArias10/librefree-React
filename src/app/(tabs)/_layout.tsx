@@ -2,11 +2,16 @@ import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 
 export default function TabsLayout() {
   const { theme, themeMode } = useTheme();
   const isDark = themeMode === 'dark';
+  const insets = useSafeAreaInsets();
+
+  // Dynamic bottom offset using Safe Area Insets to float above native Android/iOS system bars
+  const dynamicBottom = Math.max(insets.bottom + 8, 16);
 
   return (
     <Tabs
@@ -17,11 +22,11 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: isDark ? '#64748B' : '#94A3B8',
         tabBarStyle: {
           position: 'absolute',
-          bottom: Platform.OS === 'ios' ? 24 : 16,
-          left: 20,
-          right: 20,
-          height: 64,
-          borderRadius: 32,
+          bottom: dynamicBottom,
+          left: 36,
+          right: 36,
+          height: 60,
+          borderRadius: 30,
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.95)',
           borderWidth: 1,
           borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
@@ -35,7 +40,7 @@ export default function TabsLayout() {
           paddingBottom: 0,
         },
         tabBarItemStyle: {
-          height: 64,
+          height: 60,
           justifyContent: 'center',
           alignItems: 'center',
           paddingTop: 0,
@@ -105,16 +110,16 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
   activeDot: {
     position: 'absolute',
-    bottom: 5,
+    bottom: 4,
     width: 4,
     height: 4,
     borderRadius: 2,

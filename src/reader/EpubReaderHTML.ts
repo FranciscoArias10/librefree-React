@@ -223,16 +223,18 @@ export function getEpubReaderHTML(
 
           applyStyles();
 
-          // Hook iframe contents to register swipe gestures & tap flip inside EPUB pages
+          // Hook iframe contents to register swipe gestures & single-tap fullscreen toggle inside EPUB pages
           rendition.hooks.content.register(function(contents) {
             var doc = contents.document;
             var touchStartX = 0;
             var touchStartY = 0;
+            var touchStartTime = 0;
 
             doc.addEventListener('touchstart', function(e) {
               if (e.touches.length === 1) {
                 touchStartX = e.touches[0].clientX;
                 touchStartY = e.touches[0].clientY;
+                touchStartTime = Date.now();
               }
             }, false);
 
@@ -242,8 +244,12 @@ export function getEpubReaderHTML(
                 var touchEndY = e.changedTouches[0].clientY;
                 var diffX = touchEndX - touchStartX;
                 var diffY = touchEndY - touchStartY;
+                var duration = Date.now() - touchStartTime;
 
-                if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY)) {
+                if (Math.abs(diffX) < 12 && Math.abs(diffY) < 12 && duration < 320) {
+                  // Single tap -> Toggle Bars / Fullscreen mode
+                  sendToRN("TOGGLE_BARS", {});
+                } else if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY)) {
                   if (diffX < 0) {
                     rendition.next();
                   } else {

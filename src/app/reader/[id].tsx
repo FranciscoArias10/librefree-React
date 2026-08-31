@@ -23,10 +23,15 @@ import { TTSControlBar } from '../../components/TTSControlBar';
 import { stopSpeech } from '../../services/ttsService';
 import { Book, ReadingSettings } from '../../types/book';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function ReaderScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const dynamicReaderBottom = Math.max(insets.bottom + 8, 16);
 
   const webViewRef = useRef<WebView>(null);
   const [book, setBook] = useState<Book | null>(null);
@@ -49,6 +54,7 @@ export default function ReaderScreen() {
   const [selectedText, setSelectedText] = useState<string>('');
   const [currentPageText, setCurrentPageText] = useState<string>('');
   const [pageLabel, setPageLabel] = useState<string>('Página 1');
+  const [barsVisible, setBarsVisible] = useState(true);
 
   useEffect(() => {
     async function loadData() {
@@ -141,6 +147,8 @@ export default function ReaderScreen() {
         setSelectedText(data.payload.text || '');
       } else if (data.type === 'PAGE_TEXT_EXTRACTED') {
         setCurrentPageText(data.payload.text || '');
+      } else if (data.type === 'TOGGLE_BARS') {
+        setBarsVisible((prev) => !prev);
       }
     } catch (e) {}
   };
@@ -170,9 +178,9 @@ export default function ReaderScreen() {
 
   if (loading || !book) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3182CE" />
-        <Text style={styles.loadingText}>Abriendo documento...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator size="large" color={theme.accent} />
+        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Abriendo documento...</Text>
       </View>
     );
   }
@@ -191,7 +199,7 @@ export default function ReaderScreen() {
     if (settings.themeMode === 'sepia') return '#F8F1E3';
     if (settings.themeMode === 'dark') return '#1E1E2E';
     if (settings.themeMode === 'oled') return '#000000';
-    return '#FFFFFF';
+    return theme.bg;
   };
 
   const getTextColor = () => {
@@ -204,39 +212,41 @@ export default function ReaderScreen() {
   const baseUrl = FileSystem.documentDirectory || 'file:///';
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: getBackgroundColor(), paddingTop: androidStatusBarHeight }]}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: getBackgroundColor(), paddingTop: barsVisible ? androidStatusBarHeight : 0 }]}>
       {/* Reader Top Bar */}
-      <View style={[styles.topBar, { borderBottomColor: getTextColor() + '20' }]}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
-          <Feather name="arrow-left" size={22} color={getTextColor()} />
-        </TouchableOpacity>
+      {barsVisible && (
+        <View style={[styles.topBar, { borderBottomColor: getTextColor() + '20' }]}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+            <Feather name="arrow-left" size={22} color={getTextColor()} />
+          </TouchableOpacity>
 
-        <View style={styles.titleWrapper}>
-          <Text style={[styles.headerTitle, { color: getTextColor() }]} numberOfLines={1}>
-            {book.title}
-          </Text>
-          <Text style={[styles.headerChapter, { color: getTextColor(), opacity: 0.7 }]} numberOfLines={1}>
-            {currentChapter || book.author}
-          </Text>
+          <View style={styles.titleWrapper}>
+            <Text style={[styles.headerTitle, { color: getTextColor() }]} numberOfLines={1}>
+              {book.title}
+            </Text>
+            <Text style={[styles.headerChapter, { color: getTextColor(), opacity: 0.7 }]} numberOfLines={1}>
+              {currentChapter || book.author}
+            </Text>
+          </View>
+
+          <View style={styles.actionsRow}>
+            {/* TTS Button */}
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setTtsVisible(!ttsVisible)}>
+              <Feather name="volume-2" size={20} color={ttsVisible ? '#3182CE' : getTextColor()} />
+            </TouchableOpacity>
+
+            {/* Bookmark Button */}
+            <TouchableOpacity style={styles.iconBtn} onPress={handleAddBookmark}>
+              <Feather name="bookmark" size={20} color={getTextColor()} />
+            </TouchableOpacity>
+
+            {/* Settings Modal Button */}
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setControlsVisible(true)}>
+              <Feather name="sliders" size={20} color={getTextColor()} />
+            </TouchableOpacity>
+          </View>
         </View>
-
-        <View style={styles.actionsRow}>
-          {/* TTS Button */}
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setTtsVisible(!ttsVisible)}>
-            <Feather name="volume-2" size={20} color={ttsVisible ? '#3182CE' : getTextColor()} />
-          </TouchableOpacity>
-
-          {/* Bookmark Button */}
-          <TouchableOpacity style={styles.iconBtn} onPress={handleAddBookmark}>
-            <Feather name="bookmark" size={20} color={getTextColor()} />
-          </TouchableOpacity>
-
-          {/* Settings Modal Button */}
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setControlsVisible(true)}>
-            <Feather name="sliders" size={20} color={getTextColor()} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      )}
 
       {/* Main Reader Canvas WebView */}
       <View style={styles.readerCanvas}>
@@ -256,30 +266,33 @@ export default function ReaderScreen() {
       </View>
 
       {/* Reader Floating Bottom Navigation Bar */}
-      <View
-        style={[
-          styles.bottomBar,
-          {
-            backgroundColor: settings.themeMode === 'dark' || settings.themeMode === 'oled' ? 'rgba(30, 30, 46, 0.94)' : 'rgba(255, 255, 255, 0.94)',
-            borderColor: getTextColor() + '22',
-          },
-        ]}
-      >
-        <TouchableOpacity style={styles.pageBtn} onPress={handlePrevPage}>
-          <Feather name="chevron-left" size={22} color={getTextColor()} />
-        </TouchableOpacity>
+      {barsVisible && (
+        <View
+          style={[
+            styles.bottomBar,
+            {
+              bottom: dynamicReaderBottom,
+              backgroundColor: settings.themeMode === 'dark' || settings.themeMode === 'oled' ? 'rgba(30, 30, 46, 0.94)' : 'rgba(255, 255, 255, 0.94)',
+              borderColor: getTextColor() + '22',
+            },
+          ]}
+        >
+          <TouchableOpacity style={styles.pageBtn} onPress={handlePrevPage}>
+            <Feather name="chevron-left" size={22} color={getTextColor()} />
+          </TouchableOpacity>
 
-        <View style={styles.progressWrapper}>
-          <View style={[styles.progressTrack, { backgroundColor: getTextColor() + '20' }]}>
-            <View style={[styles.progressFill, { width: `${progress}%` }]} />
+          <View style={styles.progressWrapper}>
+            <View style={[styles.progressTrack, { backgroundColor: getTextColor() + '20' }]}>
+              <View style={[styles.progressFill, { width: `${progress}%` }]} />
+            </View>
+            <Text style={[styles.progressLabel, { color: getTextColor() }]}>{pageLabel}</Text>
           </View>
-          <Text style={[styles.progressLabel, { color: getTextColor() }]}>{pageLabel}</Text>
-        </View>
 
-        <TouchableOpacity style={styles.pageBtn} onPress={handleNextPage}>
-          <Feather name="chevron-right" size={22} color={getTextColor()} />
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity style={styles.pageBtn} onPress={handleNextPage}>
+            <Feather name="chevron-right" size={22} color={getTextColor()} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Floating TTS Control Bar */}
       {ttsVisible && (
@@ -295,6 +308,7 @@ export default function ReaderScreen() {
         onClose={() => setControlsVisible(false)}
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
+        format={book.format}
       />
     </SafeAreaView>
   );
@@ -347,8 +361,8 @@ const styles = StyleSheet.create({
   bottomBar: {
     position: 'absolute',
     bottom: 20,
-    left: 20,
-    right: 20,
+    left: 32,
+    right: 32,
     height: 52,
     borderRadius: 26,
     borderWidth: 1,
