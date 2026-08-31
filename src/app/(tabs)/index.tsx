@@ -259,7 +259,7 @@ export default function BookshelfScreen() {
           data={filteredBooks}
           keyExtractor={(item) => item.id}
           numColumns={layoutMode === 'list' ? 1 : layoutMode === 'grid3' ? 3 : 2}
-          columnWrapperStyle={layoutMode !== 'list' ? styles.shelfColumnWrapper : undefined}
+          columnWrapperStyle={layoutMode !== 'list' ? [styles.shelfColumnWrapper, { gap: layoutMode === 'grid3' ? 8 : 12 }] : undefined}
           contentContainerStyle={styles.shelfListContainer}
           renderItem={({ item }) => (
             <BookCard

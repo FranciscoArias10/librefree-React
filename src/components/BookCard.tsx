@@ -1,8 +1,12 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { Book } from '../types/book';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+
+const { width: screenWidth } = Dimensions.get('window');
+const GRID2_CARD_WIDTH = Math.floor((screenWidth - 44) / 2);
+const GRID3_CARD_WIDTH = Math.floor((screenWidth - 48) / 3);
 
 interface BookCardProps {
   book: Book;
@@ -82,8 +86,8 @@ export const BookCard: React.FC<BookCardProps> = ({
             <View style={[styles.badge, { backgroundColor: badge.color, marginRight: 8 }]}>
               <Text style={styles.badgeText}>{badge.label}</Text>
             </View>
-            
-            <View style={styles.progressContainer}>
+
+            <View style={styles.listProgressWrapper}>
               <View style={[styles.progressBarBackground, { backgroundColor: theme.bgChip }]}>
                 <View
                   style={[
@@ -92,7 +96,7 @@ export const BookCard: React.FC<BookCardProps> = ({
                   ]}
                 />
               </View>
-              <Text style={[styles.progressText, { color: theme.textMuted }]} numberOfLines={1}>
+              <Text style={[styles.listProgressText, { color: theme.textMuted }]} numberOfLines={1} ellipsizeMode="tail">
                 {book.currentChapter || `${Math.round(book.progressPercentage)}%`}
               </Text>
             </View>
@@ -102,14 +106,14 @@ export const BookCard: React.FC<BookCardProps> = ({
     );
   }
 
-  // 3-Column Grid View
+  // Grid View (2 or 3 Columns)
   const isGrid3 = layoutMode === 'grid3';
-  const containerStyle = isGrid3 ? styles.containerGrid3 : styles.containerGrid2;
-  const coverHeight = isGrid3 ? 145 : 190;
+  const cardWidth = isGrid3 ? GRID3_CARD_WIDTH : GRID2_CARD_WIDTH;
+  const coverHeight = isGrid3 ? Math.floor(cardWidth * 1.35) : Math.floor(cardWidth * 1.25);
 
   return (
     <TouchableOpacity
-      style={[containerStyle, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+      style={[styles.gridContainer, { width: cardWidth, backgroundColor: theme.bgCard, borderColor: theme.border }]}
       activeOpacity={0.85}
       onPress={() => onPress(book)}
       onLongPress={() => onLongPress && onLongPress(book)}
@@ -127,8 +131,8 @@ export const BookCard: React.FC<BookCardProps> = ({
               </View>
             </View>
             <View style={styles.coverBody}>
-              <Feather name={badge.iconName} size={isGrid3 ? 24 : 36} color={badge.color} style={{ marginBottom: 6 }} />
-              <Text style={[styles.coverTitleText, { color: theme.textCard, fontSize: isGrid3 ? 11 : 14 }]} numberOfLines={2}>
+              <Feather name={badge.iconName} size={isGrid3 ? 22 : 34} color={badge.color} style={{ marginBottom: 4 }} />
+              <Text style={[styles.coverTitleText, { color: theme.textCard, fontSize: isGrid3 ? 10 : 13 }]} numberOfLines={2}>
                 {book.title}
               </Text>
             </View>
@@ -175,8 +179,7 @@ export const BookCard: React.FC<BookCardProps> = ({
 };
 
 const styles = StyleSheet.create({
-  containerGrid2: {
-    width: '47%',
+  gridContainer: {
     marginBottom: 16,
     borderRadius: 14,
     borderWidth: 1,
@@ -185,18 +188,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 4,
-    overflow: 'hidden',
-  },
-  containerGrid3: {
-    width: '31%',
-    marginBottom: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
     overflow: 'hidden',
   },
   listContainer: {
@@ -223,6 +214,7 @@ const styles = StyleSheet.create({
   listDetails: {
     flex: 1,
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   listHeaderRow: {
     flexDirection: 'row',
@@ -246,6 +238,19 @@ const styles = StyleSheet.create({
   listFooterRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  listProgressWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  listProgressText: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginLeft: 6,
+    maxWidth: 100,
   },
   coverWrapper: {
     width: '100%',
