@@ -165,9 +165,12 @@ export default function AudiobooksScreen() {
             setCurrentTextSnippet(snippet);
             setIsPlaying(true);
 
-            // Save TTS progress continuously to SQLite
+            // Save TTS progress continuously to SQLite without overwriting EPUB CFI
             const progressPct = Math.min(100, Math.round(((index + 1) / total) * 100));
-            updateBookProgress(freshBook.id, progressPct, String(index), `Fragmento ${index + 1} de ${total}`);
+            const locToSave = (freshBook.format === 'EPUB' && freshBook.currentLocation?.includes('epubcfi'))
+              ? freshBook.currentLocation
+              : String(index);
+            updateBookProgress(freshBook.id, progressPct, locToSave, `Fragmento ${index + 1} de ${total}`);
           },
           () => {
             setIsPlaying(false);

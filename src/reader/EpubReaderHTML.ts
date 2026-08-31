@@ -261,8 +261,12 @@ export function getEpubReaderHTML(
           });
 
           var displayPromise;
-          if (savedLocation && savedLocation !== "1" && savedLocation.length > 3) {
-            displayPromise = rendition.display(savedLocation);
+          var isValidCfi = savedLocation && typeof savedLocation === 'string' && (savedLocation.indexOf('epubcfi') >= 0 || savedLocation.indexOf('/') >= 0 || savedLocation.indexOf('.htm') >= 0);
+          if (isValidCfi) {
+            displayPromise = rendition.display(savedLocation).catch(function(e) {
+              console.warn("CFI guardado no válido, abriendo desde el inicio:", e);
+              return rendition.display();
+            });
           } else {
             displayPromise = rendition.display();
           }
