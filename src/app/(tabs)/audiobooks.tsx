@@ -34,10 +34,13 @@ import {
   PlaybackStatus,
 } from '../../services/audioService';
 import { Feather, FontAwesome } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 
 export default function AudiobooksScreen() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const miniPlayerBottom = Math.max(insets.bottom + 8, 16) + 68;
 
   const [libraryBooks, setLibraryBooks] = useState<Book[]>([]);
   const [activeBook, setActiveBook] = useState<Book | null>(null);
@@ -285,7 +288,7 @@ export default function AudiobooksScreen() {
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.listContainer}>
+        <ScrollView contentContainerStyle={[styles.listContainer, { paddingBottom: activeBook ? miniPlayerBottom + 80 : 120 }]}>
           <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
             Selecciona un Libro para Reproducir ({libraryBooks.length})
           </Text>
@@ -338,7 +341,14 @@ export default function AudiobooksScreen() {
       {/* Floating Mini Player Bar */}
       {activeBook && !isFullPlayerVisible && (
         <TouchableOpacity
-          style={[styles.miniPlayerBar, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+          style={[
+            styles.miniPlayerBar,
+            {
+              bottom: miniPlayerBottom,
+              backgroundColor: theme.bgCard,
+              borderColor: theme.border,
+            },
+          ]}
           activeOpacity={0.9}
           onPress={() => setIsFullPlayerVisible(true)}
         >
@@ -574,7 +584,6 @@ const styles = StyleSheet.create({
   },
   miniPlayerBar: {
     position: 'absolute',
-    bottom: 10,
     left: 12,
     right: 12,
     height: 60,
@@ -582,10 +591,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    elevation: 8,
+    elevation: 10,
+    zIndex: 999,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
     borderWidth: 1,
   },
