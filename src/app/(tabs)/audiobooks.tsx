@@ -14,7 +14,7 @@ import {
   PanResponder,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { getAllBooks, updateBookProgress } from '../../services/database';
+import { getAllBooks, getBookById, updateBookProgress } from '../../services/database';
 import { extractTextFromBook } from '../../services/fileScanner';
 import { Book } from '../../types/book';
 import {
@@ -60,6 +60,7 @@ export default function AudiobooksScreen() {
 
   // Layout width for timeline dragging
   const [barWidth, setBarWidth] = useState(0);
+  const lastSavedPosRef = useRef<number>(0);
 
   const speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
 
@@ -75,23 +76,53 @@ export default function AudiobooksScreen() {
   );
 
   const handleSelectBook = async (book: Book) => {
+    // 1. Save progress of currently active book before switching to a new one
+    if (activeBook && activeBook.id !== book.id) {
+      if (activeBook.format === 'AUDIOBOOK') {
+        if (audioDuration > 0 && audioPosition > 0) {
+          const pct = Math.min(100, Math.round((audioPosition / audioDuration) * 100));
+          await updateBookProgress(
+            activeBook.id,
+            pct,
+            String(Math.round(audioPosition)),
+            `Minuto ${formatTime(audioPosition / 1000)}`
+          );
+        }
+      } else {
+        if (totalChunks > 0 && currentChunkIndex > 0) {
+          const pct = Math.min(100, Math.round(((currentChunkIndex + 1) / totalChunks) * 100));
+          await updateBookProgress(
+            activeBook.id,
+            pct,
+            String(currentChunkIndex),
+            `Fragmento ${currentChunkIndex + 1} de ${totalChunks}`
+          );
+        }
+      }
+    }
+
     stopTTS();
-    setActiveBook(book);
+
+    // 2. Fetch fresh record from DB so we get the latest saved location
+    const freshBook = (await getBookById(book.id)) || book;
+    setActiveBook(freshBook);
     setIsFullPlayerVisible(true);
     setIsPlaying(false);
 
     let savedPos = 0;
-    if (book.currentLocation) {
-      const parsed = parseInt(book.currentLocation, 10);
+    if (freshBook.currentLocation) {
+      const parsed = parseInt(freshBook.currentLocation, 10);
       if (!isNaN(parsed) && parsed > 0) savedPos = parsed;
     }
 
-    if (book.format === 'AUDIOBOOK') {
+    lastSavedPosRef.current = savedPos;
+
+    if (freshBook.format === 'AUDIOBOOK') {
       setAudioPosition(savedPos);
-      setAudioDuration(book.totalPagesOrDuration || 0);
+      setAudioDuration(freshBook.totalPagesOrDuration || 0);
 
       loadAudiobookTrack(
-        book.filePath,
+        freshBook.filePath,
         (status: PlaybackStatus) => {
           setIsPlaying(status.isPlaying);
           if (status.positionMillis !== undefined) {
@@ -100,6 +131,20 @@ export default function AudiobooksScreen() {
           if (status.durationMillis) {
             setAudioDuration(status.durationMillis);
           }
+
+          // Throttle periodic progress saving to DB every 2.5s while playing
+          if (status.isPlaying && status.positionMillis && status.durationMillis) {
+            if (Math.abs(status.positionMillis - lastSavedPosRef.current) > 2500) {
+              lastSavedPosRef.current = status.positionMillis;
+              const pct = Math.min(100, Math.round((status.positionMillis / status.durationMillis) * 100));
+              updateBookProgress(
+                freshBook.id,
+                pct,
+                String(Math.round(status.positionMillis)),
+                `Minuto ${formatTime(status.positionMillis / 1000)}`
+              );
+            }
+          }
         },
         savedPos
       );
@@ -107,7 +152,7 @@ export default function AudiobooksScreen() {
       // PDF, EPUB, TXT -> Full TTS Generation
       try {
         setIsGenerating(true);
-        const textToRead = await extractTextFromBook(book);
+        const textToRead = await extractTextFromBook(freshBook);
 
         setCurrentChunkIndex(savedPos);
 
@@ -122,7 +167,7 @@ export default function AudiobooksScreen() {
 
             // Save TTS progress continuously to SQLite
             const progressPct = Math.min(100, Math.round(((index + 1) / total) * 100));
-            updateBookProgress(book.id, progressPct, String(index), `Fragmento ${index + 1} de ${total}`);
+            updateBookProgress(freshBook.id, progressPct, String(index), `Fragmento ${index + 1} de ${total}`);
           },
           () => {
             setIsPlaying(false);
