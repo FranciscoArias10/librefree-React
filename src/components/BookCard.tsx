@@ -149,21 +149,19 @@ export const BookCard: React.FC<BookCardProps> = ({
 
   // Grid View (2 or 3 Columns)
   const isGrid3 = layoutMode === 'grid3';
-  const cardWidth = isGrid3 ? GRID3_CARD_WIDTH : GRID2_CARD_WIDTH;
-  const coverHeight = isGrid3 ? Math.floor(cardWidth * 1.35) : Math.floor(cardWidth * 1.25);
 
   return (
     <TouchableOpacity
       style={[
-        styles.gridContainer,
-        { width: cardWidth, backgroundColor: theme.bgCard, borderColor: isSelected ? '#EF4444' : theme.border },
+        isGrid3 ? styles.containerGrid3 : styles.containerGrid2,
+        { backgroundColor: theme.bgCard, borderColor: isSelected ? '#EF4444' : theme.border },
       ]}
       activeOpacity={0.85}
       onPress={handleCardPress}
       onLongPress={handleCardLongPress}
       delayLongPress={300}
     >
-      <View style={[styles.coverWrapper, { height: coverHeight, backgroundColor: theme.bg }]}>
+      <View style={[styles.coverWrapper, { aspectRatio: 0.72, backgroundColor: theme.bg }]}>
         {book.coverPath && book.coverPath.length > 50 ? (
           <Image source={{ uri: book.coverPath }} style={styles.coverImage} resizeMode="cover" />
         ) : (
@@ -227,7 +225,9 @@ export const BookCard: React.FC<BookCardProps> = ({
 };
 
 const styles = StyleSheet.create({
-  gridContainer: {
+  containerGrid2: {
+    flex: 1,
+    maxWidth: '48.5%',
     marginBottom: 16,
     borderRadius: 14,
     borderWidth: 1,
@@ -236,6 +236,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 4,
+    overflow: 'hidden',
+  },
+  containerGrid3: {
+    flex: 1,
+    maxWidth: '31.5%',
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
     overflow: 'hidden',
   },
   listContainer: {
