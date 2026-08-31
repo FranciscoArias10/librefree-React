@@ -35,22 +35,22 @@ export default function BookshelfScreen() {
     type: 'success',
   });
 
-  const fetchBooks = async () => {
+  const fetchBooks = async (isInitialLoad: boolean = false) => {
     try {
-      setLoading(true);
+      if (isInitialLoad) setLoading(true);
       const data = await getAllBooks();
       setBooks(data);
     } catch (err) {
       console.error('Error cargando libros:', err);
     } finally {
-      setLoading(false);
+      if (isInitialLoad) setLoading(false);
     }
   };
 
   useFocusEffect(
     useCallback(() => {
-      fetchBooks();
-    }, [])
+      fetchBooks(books.length === 0);
+    }, [books.length])
   );
 
   const handleToggleFavorite = async (bookId: string, currentFav: boolean) => {
