@@ -17,11 +17,13 @@ export function getEpubReaderHTML(
   fileUriOrBase64: string,
   isBase64: boolean,
   initialCfi: string | undefined,
-  settings: ReadingSettings
+  settings: ReadingSettings,
+  progressPercentage: number = 0
 ): string {
   const colors = getThemeColors(settings.themeMode);
   const rawData = JSON.stringify(fileUriOrBase64);
   const initialLoc = JSON.stringify(initialCfi || '1');
+  const savedProgressPct = progressPercentage || 0;
 
   return `
 <!DOCTYPE html>
@@ -108,6 +110,7 @@ export function getEpubReaderHTML(
       var fileData = ${rawData};
       var isB64 = ${isBase64 ? 'true' : 'false'};
       var savedLocation = ${initialLoc};
+      var savedProgressPct = ${savedProgressPct};
 
       function sendToRN(type, payload) {
         if (window.ReactNativeWebView) {
@@ -284,6 +287,13 @@ export function getEpubReaderHTML(
           book.ready.then(function() {
             return book.locations.generate(1024);
           }).then(function() {
+            if (!isValidCfi && savedProgressPct > 0 && rendition) {
+              var targetCfi = book.locations.cfiFromPercentage(savedProgressPct / 100);
+              if (targetCfi) {
+                rendition.display(targetCfi);
+              }
+            }
+
             if (rendition && rendition.currentLocation()) {
               var loc = rendition.currentLocation();
               if (loc && loc.start) {

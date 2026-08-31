@@ -185,13 +185,13 @@ export default function ReaderScreen() {
   const htmlSource = useMemo(() => {
     if (!book) return '';
     if (book.format === 'EPUB') {
-      return getEpubReaderHTML(bookData.content || book.filePath, bookData.isBase64, book.currentLocation, settings);
+      return getEpubReaderHTML(bookData.content || book.filePath, bookData.isBase64, book.currentLocation, settings, book.progressPercentage);
     }
     if (book.format === 'PDF') {
       return getPdfReaderHTML(bookData.content, book.currentLocation || '1', settings);
     }
     return getTxtReaderHTML(bookData.content, book.title, settings);
-  }, [book?.id, bookData.content]);
+  }, [book?.id, bookData.content, book?.progressPercentage]);
 
   if (loading || !book) {
     return (
