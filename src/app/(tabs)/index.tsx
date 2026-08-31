@@ -18,6 +18,7 @@ import { pickMultipleBooksByFormat, bulkImportBooks } from '../../services/fileS
 import { BookCard } from '../../components/BookCard';
 import { BackgroundCoverProcessor } from '../../components/BackgroundCoverProcessor';
 import { Toast } from '../../components/Toast';
+import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Book } from '../../types/book';
 import { Feather } from '@expo/vector-icons';
@@ -31,6 +32,9 @@ export default function BookshelfScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'FAVORITES' | 'EPUB' | 'PDF' | 'TXT'>('ALL');
   const [layoutMode, setLayoutMode] = useState<'grid2' | 'grid3' | 'list'>('grid2');
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
     visible: false,
     message: '',
@@ -81,21 +85,58 @@ export default function BookshelfScreen() {
   };
 
   const handleLongPressBook = (book: Book) => {
-    Alert.alert(
-      'Eliminar de la App',
-      `¿Deseas quitar "${book.title}" de tu estantería?\n\n(El archivo original guardado en tu celular no será borrado).`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteBook(book.id);
-            fetchBooks();
-          },
-        },
-      ]
+    setIsSelectMode(true);
+    if (!selectedBookIds.includes(book.id)) {
+      setSelectedBookIds([book.id]);
+    }
+  };
+
+  const handleToggleSelectBook = (bookId: string) => {
+    setSelectedBookIds((prev) =>
+      prev.includes(bookId) ? prev.filter((id) => id !== bookId) : [...prev, bookId]
     );
+  };
+
+  const handleSelectAllBooks = () => {
+    if (selectedBookIds.length === filteredBooks.length) {
+      setSelectedBookIds([]);
+    } else {
+      setSelectedBookIds(filteredBooks.map((b) => b.id));
+    }
+  };
+
+  const handleCancelSelectMode = () => {
+    setIsSelectMode(false);
+    setSelectedBookIds([]);
+  };
+
+  const handleRequestDelete = () => {
+    if (selectedBookIds.length === 0) return;
+    setDeleteModalVisible(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      setDeleteModalVisible(false);
+      const count = selectedBookIds.length;
+      for (const id of selectedBookIds) {
+        await deleteBook(id);
+      }
+      setIsSelectMode(false);
+      setSelectedBookIds([]);
+      fetchBooks();
+      setToast({
+        visible: true,
+        message: count > 1 ? `✓ Se eliminaron ${count} libros de tu estantería.` : '✓ Libro eliminado de tu estantería.',
+        type: 'success',
+      });
+    } catch (e) {
+      setToast({
+        visible: true,
+        message: 'No se pudo eliminar el libro.',
+        type: 'error',
+      });
+    }
   };
 
   const handleImportBook = async () => {
@@ -159,27 +200,67 @@ export default function BookshelfScreen() {
         onHide={() => setToast((prev) => ({ ...prev, visible: false }))}
       />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.bg }]}>
-        <View style={styles.titleRow}>
-          <View style={[styles.logoBadge, { backgroundColor: theme.accent }]}>
-            <Feather name="book-open" size={20} color="#FFFFFF" />
-          </View>
-          <View>
-            <Text style={[styles.appTitle, { color: theme.textPrimary }]}>LibreFree</Text>
-            <Text style={[styles.appSubtitle, { color: theme.textSecondary }]}>Mi Estantería Virtual</Text>
+      {/* Header Bar */}
+      {isSelectMode ? (
+        <View style={[styles.header, { backgroundColor: theme.bg }]}>
+          <TouchableOpacity style={styles.selectionCancelBtn} onPress={handleCancelSelectMode}>
+            <Feather name="x" size={20} color={theme.textPrimary} />
+            <Text style={[styles.selectionCancelText, { color: theme.textPrimary }]}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <Text style={[styles.selectionCountText, { color: theme.textPrimary }]}>
+            {selectedBookIds.length} seleccionados
+          </Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity style={styles.selectAllBtn} onPress={handleSelectAllBooks}>
+              <Text style={[styles.selectAllText, { color: theme.accent }]}>
+                {selectedBookIds.length === filteredBooks.length ? 'Ninguno' : 'Todos'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.deleteSelectionBtn,
+                { backgroundColor: selectedBookIds.length > 0 ? '#EF4444' : theme.bgChip },
+              ]}
+              onPress={handleRequestDelete}
+              disabled={selectedBookIds.length === 0}
+            >
+              <Feather name="trash-2" size={16} color={selectedBookIds.length > 0 ? '#FFFFFF' : theme.textMuted} />
+              <Text
+                style={[
+                  styles.deleteSelectionText,
+                  { color: selectedBookIds.length > 0 ? '#FFFFFF' : theme.textMuted },
+                ]}
+              >
+                ({selectedBookIds.length})
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
+      ) : (
+        <View style={[styles.header, { backgroundColor: theme.bg }]}>
+          <View style={styles.titleRow}>
+            <View style={[styles.logoBadge, { backgroundColor: theme.accent }]}>
+              <Feather name="book-open" size={20} color="#FFFFFF" />
+            </View>
+            <View>
+              <Text style={[styles.appTitle, { color: theme.textPrimary }]}>LibreFree</Text>
+              <Text style={[styles.appSubtitle, { color: theme.textSecondary }]}>Mi Estantería Virtual</Text>
+            </View>
+          </View>
 
-        <TouchableOpacity
-          style={[styles.importBtn, { backgroundColor: theme.accent }]}
-          onPress={handleImportBook}
-          activeOpacity={0.8}
-        >
-          <Feather name="plus" size={18} color="#FFFFFF" />
-          <Text style={styles.importBtnText}>Importar</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.importBtn, { backgroundColor: theme.accent }]}
+            onPress={handleImportBook}
+            activeOpacity={0.8}
+          >
+            <Feather name="plus" size={18} color="#FFFFFF" />
+            <Text style={styles.importBtnText}>Importar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Search Bar & View Mode Toggle */}
       <View style={styles.searchAndLayoutRow}>
@@ -265,6 +346,9 @@ export default function BookshelfScreen() {
             <BookCard
               book={item}
               layoutMode={layoutMode}
+              isSelectMode={isSelectMode}
+              isSelected={selectedBookIds.includes(item.id)}
+              onToggleSelect={handleToggleSelectBook}
               onPress={handleOpenBook}
               onLongPress={handleLongPressBook}
               onToggleFavorite={handleToggleFavorite}
@@ -272,6 +356,13 @@ export default function BookshelfScreen() {
           )}
         />
       )}
+      <ConfirmDeleteModal
+        visible={deleteModalVisible}
+        count={selectedBookIds.length}
+        bookTitle={selectedBookIds.length === 1 ? books.find((b) => b.id === selectedBookIds[0])?.title : undefined}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -325,6 +416,42 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+    marginLeft: 4,
+  },
+  selectionCancelBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingRight: 8,
+  },
+  selectionCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  selectionCountText: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  selectAllBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  selectAllText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  deleteSelectionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    elevation: 2,
+  },
+  deleteSelectionText: {
+    fontSize: 12,
+    fontWeight: '800',
     marginLeft: 4,
   },
   searchAndLayoutRow: {

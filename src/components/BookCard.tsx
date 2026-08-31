@@ -14,6 +14,9 @@ interface BookCardProps {
   onLongPress?: (book: Book) => void;
   onToggleFavorite?: (bookId: string, current: boolean) => void;
   layoutMode?: 'grid2' | 'grid3' | 'list';
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (bookId: string) => void;
 }
 
 export const BookCard: React.FC<BookCardProps> = ({
@@ -22,8 +25,25 @@ export const BookCard: React.FC<BookCardProps> = ({
   onLongPress,
   onToggleFavorite,
   layoutMode = 'grid2',
+  isSelectMode = false,
+  isSelected = false,
+  onToggleSelect,
 }) => {
   const { theme } = useTheme();
+
+  const handleCardPress = () => {
+    if (isSelectMode && onToggleSelect) {
+      onToggleSelect(book.id);
+    } else {
+      onPress(book);
+    }
+  };
+
+  const handleCardLongPress = () => {
+    if (onLongPress) {
+      onLongPress(book);
+    }
+  };
 
   const getFormatBadge = () => {
     switch (book.format) {
@@ -40,15 +60,33 @@ export const BookCard: React.FC<BookCardProps> = ({
 
   const badge = getFormatBadge();
 
+  // Selection Checkbox Overlay
+  const renderSelectionCheck = () => {
+    if (!isSelectMode) return null;
+    return (
+      <View
+        style={[
+          styles.selectionIndicator,
+          isSelected ? { backgroundColor: '#EF4444', borderColor: '#EF4444' } : { backgroundColor: 'rgba(0,0,0,0.3)', borderColor: '#FFFFFF88' },
+        ]}
+      >
+        {isSelected && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+      </View>
+    );
+  };
+
   // Horizontal List Row View
   if (layoutMode === 'list') {
     return (
       <TouchableOpacity
-        style={[styles.listContainer, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+        style={[
+          styles.listContainer,
+          { backgroundColor: theme.bgCard, borderColor: isSelected ? '#EF4444' : theme.border },
+        ]}
         activeOpacity={0.85}
-        onPress={() => onPress(book)}
-        onLongPress={() => onLongPress && onLongPress(book)}
-        delayLongPress={400}
+        onPress={handleCardPress}
+        onLongPress={handleCardLongPress}
+        delayLongPress={300}
       >
         <View style={[styles.listCoverWrapper, { backgroundColor: theme.bg }]}>
           {book.coverPath && book.coverPath.length > 50 ? (
@@ -59,6 +97,7 @@ export const BookCard: React.FC<BookCardProps> = ({
               <Feather name={badge.iconName} size={22} color={badge.color} />
             </View>
           )}
+          {renderSelectionCheck()}
         </View>
 
         <View style={styles.listDetails}>
@@ -66,16 +105,18 @@ export const BookCard: React.FC<BookCardProps> = ({
             <Text style={[styles.listTitle, { color: theme.textCard }]} numberOfLines={1}>
               {book.title}
             </Text>
-            <TouchableOpacity
-              style={styles.listFavoriteButton}
-              onPress={() => onToggleFavorite && onToggleFavorite(book.id, book.favorite)}
-            >
-              <Ionicons
-                name={book.favorite ? 'star' : 'star-outline'}
-                size={18}
-                color={book.favorite ? '#F1C40F' : theme.textMuted}
-              />
-            </TouchableOpacity>
+            {!isSelectMode && (
+              <TouchableOpacity
+                style={styles.listFavoriteButton}
+                onPress={() => onToggleFavorite && onToggleFavorite(book.id, book.favorite)}
+              >
+                <Ionicons
+                  name={book.favorite ? 'star' : 'star-outline'}
+                  size={18}
+                  color={book.favorite ? '#F1C40F' : theme.textMuted}
+                />
+              </TouchableOpacity>
+            )}
           </View>
 
           <Text style={[styles.listAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
@@ -113,11 +154,14 @@ export const BookCard: React.FC<BookCardProps> = ({
 
   return (
     <TouchableOpacity
-      style={[styles.gridContainer, { width: cardWidth, backgroundColor: theme.bgCard, borderColor: theme.border }]}
+      style={[
+        styles.gridContainer,
+        { width: cardWidth, backgroundColor: theme.bgCard, borderColor: isSelected ? '#EF4444' : theme.border },
+      ]}
       activeOpacity={0.85}
-      onPress={() => onPress(book)}
-      onLongPress={() => onLongPress && onLongPress(book)}
-      delayLongPress={400}
+      onPress={handleCardPress}
+      onLongPress={handleCardLongPress}
+      delayLongPress={300}
     >
       <View style={[styles.coverWrapper, { height: coverHeight, backgroundColor: theme.bg }]}>
         {book.coverPath && book.coverPath.length > 50 ? (
@@ -139,16 +183,20 @@ export const BookCard: React.FC<BookCardProps> = ({
           </View>
         )}
 
-        <TouchableOpacity
-          style={styles.favoriteButton}
-          onPress={() => onToggleFavorite && onToggleFavorite(book.id, book.favorite)}
-        >
-          <Ionicons
-            name={book.favorite ? 'star' : 'star-outline'}
-            size={16}
-            color={book.favorite ? '#F1C40F' : '#FFFFFF88'}
-          />
-        </TouchableOpacity>
+        {isSelectMode ? (
+          renderSelectionCheck()
+        ) : (
+          <TouchableOpacity
+            style={styles.favoriteButton}
+            onPress={() => onToggleFavorite && onToggleFavorite(book.id, book.favorite)}
+          >
+            <Ionicons
+              name={book.favorite ? 'star' : 'star-outline'}
+              size={16}
+              color={book.favorite ? '#F1C40F' : '#FFFFFF88'}
+            />
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={[styles.details, { padding: isGrid3 ? 6 : 10 }]}>
@@ -323,6 +371,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
     borderRadius: 14,
     padding: 4,
+  },
+  selectionIndicator: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
   },
   details: {
     padding: 10,
