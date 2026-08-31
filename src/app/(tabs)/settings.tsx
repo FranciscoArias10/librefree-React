@@ -11,11 +11,17 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
+import { Toast } from '../../components/Toast';
 
 export default function SettingsScreen() {
   const { theme, themeMode, setThemeMode } = useTheme();
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
   const [cloudSyncEnabled, setCloudSyncEnabled] = useState(true);
 
   const isDark = themeMode === 'dark';
@@ -23,6 +29,12 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg, paddingTop: androidStatusBarPadding }]}>
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={() => setToast((prev) => ({ ...prev, visible: false }))}
+      />
       <ScrollView contentContainerStyle={styles.container}>
         {/* Header */}
         <Text style={[styles.title, { color: theme.textPrimary }]}>Ajustes de la App</Text>
@@ -148,7 +160,7 @@ export default function SettingsScreen() {
 
           <TouchableOpacity
             style={styles.settingRowBtn}
-            onPress={() => Alert.alert('Caché Limpia', 'Se ha liberado el espacio en la memoria temporal.')}
+            onPress={() => setToast({ visible: true, message: '✓ Se ha liberado el espacio en la memoria temporal.', type: 'success' })}
           >
             <Feather name="trash-2" size={20} color="#E53E3E" style={{ marginRight: 12 }} />
             <Text style={[styles.settingTitle, { color: '#E53E3E' }]}>Limpiar Caché del Lector</Text>

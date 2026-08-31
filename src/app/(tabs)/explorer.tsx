@@ -30,6 +30,7 @@ import { getAllBooks } from '../../services/database';
 import { Book, ReadingSettings } from '../../types/book';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
+import { Toast } from '../../components/Toast';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 48) / 2;
@@ -51,9 +52,14 @@ export default function FileExplorerScreen() {
   const [scannedResults, setScannedResults] = useState<ScannedFile[]>([]);
   const [isResultsModalVisible, setIsResultsModalVisible] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-  const [currentScanningFolder, setCurrentScanningFolder] = useState('Analizando almacenamiento...');
+  const [currentScanningFolder, setCurrentScanningFolder] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const [importedBooks, setImportedBooks] = useState<Book[]>([]);
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
 
   // Thumbnail rendering queue
   const [currentProcessingIndex, setCurrentProcessingIndex] = useState<number>(-1);
@@ -84,7 +90,7 @@ export default function FileExplorerScreen() {
       setIsScanning(false);
 
       if (results.length === 0) {
-        Alert.alert('Escaneo Finalizado', 'No se encontraron nuevos archivos EPUB o PDF en el almacenamiento.');
+        setToast({ visible: true, message: 'No se encontraron nuevos archivos en el almacenamiento.', type: 'info' });
         return;
       }
 
@@ -96,7 +102,7 @@ export default function FileExplorerScreen() {
       }
     } catch (e) {
       setIsScanning(false);
-      Alert.alert('Error', 'No se pudo completar el escaneo automático.');
+      setToast({ visible: true, message: 'No se pudo completar el escaneo automático.', type: 'error' });
     }
   };
 
@@ -109,7 +115,7 @@ export default function FileExplorerScreen() {
       setIsResultsModalVisible(true);
       processNextThumbnail(0, results);
     } catch (e) {
-      Alert.alert('Error', 'No se pudieron seleccionar los archivos manualmente.');
+      setToast({ visible: true, message: 'No se pudieron seleccionar los archivos manualmente.', type: 'error' });
     }
   };
 
@@ -175,7 +181,7 @@ export default function FileExplorerScreen() {
   const handleConfirmImport = async () => {
     const selectedFiles = scannedResults.filter((f) => f.selected);
     if (selectedFiles.length === 0) {
-      Alert.alert('Atención', 'Selecciona al menos un libro para guardar en la aplicación.');
+      setToast({ visible: true, message: 'Selecciona al menos un libro para guardar.', type: 'info' });
       return;
     }
 
@@ -185,15 +191,12 @@ export default function FileExplorerScreen() {
       setIsImporting(false);
       setIsResultsModalVisible(false);
 
-      Alert.alert(
-        '¡Libros Agregados!',
-        `Se agregaron ${imported.length} libros a tu biblioteca.`
-      );
+      setToast({ visible: true, message: `✓ Se agregaron ${imported.length} libro(s) a tu biblioteca.`, type: 'success' });
       loadBooks();
       router.push('/(tabs)');
     } catch (err) {
       setIsImporting(false);
-      Alert.alert('Error', 'Ocurrió un problema durante la importación.');
+      setToast({ visible: true, message: 'Ocurrió un problema durante la importación.', type: 'error' });
     }
   };
 
@@ -203,6 +206,12 @@ export default function FileExplorerScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg, paddingTop: androidStatusBarPadding }]}>
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={() => setToast((prev) => ({ ...prev, visible: false }))}
+      />
       {/* Hidden Offscreen Thumbnail Processor */}
       {processingHtml && (
         <View style={styles.hiddenProcessor} pointerEvents="none">

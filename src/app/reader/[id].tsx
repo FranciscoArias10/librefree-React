@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import { ReaderControlsModal } from '../../components/ReaderControlsModal';
 import { TTSControlBar } from '../../components/TTSControlBar';
 import { stopSpeech } from '../../services/ttsService';
 import { Book, ReadingSettings } from '../../types/book';
+import { Toast } from '../../components/Toast';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
@@ -55,6 +56,11 @@ export default function ReaderScreen() {
   const [currentPageText, setCurrentPageText] = useState<string>('');
   const [pageLabel, setPageLabel] = useState<string>('Página 1');
   const [barsVisible, setBarsVisible] = useState(true);
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
 
   useEffect(() => {
     async function loadData() {
@@ -161,7 +167,7 @@ export default function ReaderScreen() {
       chapterTitle: currentChapter || 'Marcador de lectura',
       snippet: selectedText || `Progreso ${progress}%`,
     });
-    Alert.alert('Marcador Guardado', `Se guardó la posición en tus marcadores.`);
+    setToast({ visible: true, message: '✓ Posición guardada en tus marcadores.', type: 'success' });
   };
 
   const handleNextPage = () => {
@@ -185,7 +191,8 @@ export default function ReaderScreen() {
     );
   }
 
-  const getHtmlSource = () => {
+  const htmlSource = useMemo(() => {
+    if (!book) return '';
     if (book.format === 'EPUB') {
       return getEpubReaderHTML(bookData.content || book.filePath, bookData.isBase64, book.currentLocation, settings);
     }
@@ -193,7 +200,7 @@ export default function ReaderScreen() {
       return getPdfReaderHTML(bookData.content, book.currentLocation || '1', settings);
     }
     return getTxtReaderHTML(bookData.content, book.title, settings);
-  };
+  }, [book?.id, bookData.content]);
 
   const getBackgroundColor = () => {
     if (settings.themeMode === 'sepia') return '#F8F1E3';
@@ -213,6 +220,12 @@ export default function ReaderScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: getBackgroundColor(), paddingTop: barsVisible ? androidStatusBarHeight : 0 }]}>
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={() => setToast((prev) => ({ ...prev, visible: false }))}
+      />
       {/* Reader Top Bar */}
       {barsVisible && (
         <View style={[styles.topBar, { borderBottomColor: getTextColor() + '20' }]}>
@@ -253,7 +266,7 @@ export default function ReaderScreen() {
         <WebView
           ref={webViewRef}
           originWhitelist={['*']}
-          source={{ html: getHtmlSource(), baseUrl: baseUrl }}
+          source={{ html: htmlSource, baseUrl: baseUrl }}
           onMessage={handleWebViewMessage}
           style={{ backgroundColor: 'transparent' }}
           javaScriptEnabled

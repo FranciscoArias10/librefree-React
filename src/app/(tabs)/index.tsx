@@ -17,6 +17,7 @@ import { getAllBooks, toggleFavorite, deleteBook } from '../../services/database
 import { pickMultipleBooksByFormat, bulkImportBooks } from '../../services/fileScanner';
 import { BookCard } from '../../components/BookCard';
 import { BackgroundCoverProcessor } from '../../components/BackgroundCoverProcessor';
+import { Toast } from '../../components/Toast';
 import { Book } from '../../types/book';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
@@ -28,6 +29,11 @@ export default function BookshelfScreen() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'FAVORITES' | 'EPUB' | 'PDF' | 'TXT'>('ALL');
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
 
   const fetchBooks = async () => {
     try {
@@ -77,14 +83,19 @@ export default function BookshelfScreen() {
       
       const imported = await bulkImportBooks(results);
       if (imported.length > 0) {
-        Alert.alert(
-          '¡Libros Importados!',
-          `Se agregaron ${imported.length} libros a tu estantería.`
-        );
+        setToast({
+          visible: true,
+          message: `✓ Se agregaron ${imported.length} libro(s) a tu estantería.`,
+          type: 'success',
+        });
         fetchBooks();
       }
     } catch (err) {
-      Alert.alert('Error', 'No se pudo completar la importación.');
+      setToast({
+        visible: true,
+        message: 'No se pudo completar la importación.',
+        type: 'error',
+      });
     }
   };
 
@@ -118,6 +129,13 @@ export default function BookshelfScreen() {
     <SafeAreaView style={[{ flex: 1, backgroundColor: theme.bg }, { paddingTop: androidStatusBarPadding }]}>
       {/* Background Cover Processor Component */}
       <BackgroundCoverProcessor onCoverGenerated={fetchBooks} />
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={() => setToast((prev) => ({ ...prev, visible: false }))}
+      />
 
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.bg }]}>
