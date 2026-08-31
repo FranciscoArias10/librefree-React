@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { pickMultipleBooksByFormat, bulkImportBooks } from '../../services/fileS
 import { BookCard } from '../../components/BookCard';
 import { BackgroundCoverProcessor } from '../../components/BackgroundCoverProcessor';
 import { Toast } from '../../components/Toast';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Book } from '../../types/book';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
@@ -29,11 +30,32 @@ export default function BookshelfScreen() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'FAVORITES' | 'EPUB' | 'PDF' | 'TXT'>('ALL');
+  const [layoutMode, setLayoutMode] = useState<'grid2' | 'grid3' | 'list'>('grid2');
   const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
     visible: false,
     message: '',
     type: 'success',
   });
+
+  useEffect(() => {
+    async function loadLayout() {
+      try {
+        const saved = await AsyncStorage.getItem('librefree_layout_mode');
+        if (saved && (saved === 'grid2' || saved === 'grid3' || saved === 'list')) {
+          setLayoutMode(saved as any);
+        }
+      } catch (e) {}
+    }
+    loadLayout();
+  }, []);
+
+  const handleToggleLayoutMode = async () => {
+    const nextMode = layoutMode === 'grid2' ? 'grid3' : layoutMode === 'grid3' ? 'list' : 'grid2';
+    setLayoutMode(nextMode);
+    try {
+      await AsyncStorage.setItem('librefree_layout_mode', nextMode);
+    } catch (e) {}
+  };
 
   const fetchBooks = async (isInitialLoad: boolean = false) => {
     try {
@@ -159,16 +181,30 @@ export default function BookshelfScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Search Bar */}
-      <View style={[styles.searchContainer, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-        <Feather name="search" size={18} color={theme.textMuted} style={styles.searchIcon} />
-        <TextInput
-          style={[styles.searchInput, { color: theme.textPrimary }]}
-          placeholder="Buscar por título o autor..."
-          placeholderTextColor={theme.textMuted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
+      {/* Search Bar & View Mode Toggle */}
+      <View style={styles.searchAndLayoutRow}>
+        <View style={[styles.searchContainer, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+          <Feather name="search" size={18} color={theme.textMuted} style={styles.searchIcon} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.textPrimary }]}
+            placeholder="Buscar por título o autor..."
+            placeholderTextColor={theme.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.layoutToggleBtn, { backgroundColor: theme.bgInput, borderColor: theme.border }]}
+          onPress={handleToggleLayoutMode}
+          activeOpacity={0.7}
+        >
+          <Feather
+            name={layoutMode === 'grid2' ? 'grid' : layoutMode === 'grid3' ? 'columns' : 'list'}
+            size={18}
+            color={theme.accent}
+          />
+        </TouchableOpacity>
       </View>
 
       {/* Category Filter Chips */}
@@ -219,14 +255,16 @@ export default function BookshelfScreen() {
         </View>
       ) : (
         <FlatList
+          key={layoutMode}
           data={filteredBooks}
           keyExtractor={(item) => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.shelfColumnWrapper}
+          numColumns={layoutMode === 'list' ? 1 : layoutMode === 'grid3' ? 3 : 2}
+          columnWrapperStyle={layoutMode !== 'list' ? styles.shelfColumnWrapper : undefined}
           contentContainerStyle={styles.shelfListContainer}
           renderItem={({ item }) => (
             <BookCard
               book={item}
+              layoutMode={layoutMode}
               onPress={handleOpenBook}
               onLongPress={handleLongPressBook}
               onToggleFavorite={handleToggleFavorite}
@@ -289,15 +327,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 4,
   },
-  searchContainer: {
+  searchAndLayoutRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 46,
     borderWidth: 1,
-    marginBottom: 12,
+    marginRight: 10,
+    elevation: 1,
+  },
+  layoutToggleBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
     elevation: 1,
   },
   searchIcon: {

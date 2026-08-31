@@ -9,9 +9,16 @@ interface BookCardProps {
   onPress: (book: Book) => void;
   onLongPress?: (book: Book) => void;
   onToggleFavorite?: (bookId: string, current: boolean) => void;
+  layoutMode?: 'grid2' | 'grid3' | 'list';
 }
 
-export const BookCard: React.FC<BookCardProps> = ({ book, onPress, onLongPress, onToggleFavorite }) => {
+export const BookCard: React.FC<BookCardProps> = ({
+  book,
+  onPress,
+  onLongPress,
+  onToggleFavorite,
+  layoutMode = 'grid2',
+}) => {
   const { theme } = useTheme();
 
   const getFormatBadge = () => {
@@ -29,70 +36,134 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onPress, onLongPress, 
 
   const badge = getFormatBadge();
 
+  // Horizontal List Row View
+  if (layoutMode === 'list') {
+    return (
+      <TouchableOpacity
+        style={[styles.listContainer, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+        activeOpacity={0.85}
+        onPress={() => onPress(book)}
+        onLongPress={() => onLongPress && onLongPress(book)}
+        delayLongPress={400}
+      >
+        <View style={[styles.listCoverWrapper, { backgroundColor: theme.bg }]}>
+          {book.coverPath && book.coverPath.length > 50 ? (
+            <Image source={{ uri: book.coverPath }} style={styles.coverImage} resizeMode="cover" />
+          ) : (
+            <View style={[styles.bookCoverPage, { backgroundColor: badge.bgGradient }]}>
+              <View style={styles.spineShadow} />
+              <Feather name={badge.iconName} size={22} color={badge.color} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.listDetails}>
+          <View style={styles.listHeaderRow}>
+            <Text style={[styles.listTitle, { color: theme.textCard }]} numberOfLines={1}>
+              {book.title}
+            </Text>
+            <TouchableOpacity
+              style={styles.listFavoriteButton}
+              onPress={() => onToggleFavorite && onToggleFavorite(book.id, book.favorite)}
+            >
+              <Ionicons
+                name={book.favorite ? 'star' : 'star-outline'}
+                size={18}
+                color={book.favorite ? '#F1C40F' : theme.textMuted}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.listAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
+            {book.author}
+          </Text>
+
+          <View style={styles.listFooterRow}>
+            <View style={[styles.badge, { backgroundColor: badge.color, marginRight: 8 }]}>
+              <Text style={styles.badgeText}>{badge.label}</Text>
+            </View>
+            
+            <View style={styles.progressContainer}>
+              <View style={[styles.progressBarBackground, { backgroundColor: theme.bgChip }]}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    { backgroundColor: theme.accent, width: `${Math.min(100, Math.max(0, book.progressPercentage))}%` },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.progressText, { color: theme.textMuted }]} numberOfLines={1}>
+                {book.currentChapter || `${Math.round(book.progressPercentage)}%`}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  // 3-Column Grid View
+  const isGrid3 = layoutMode === 'grid3';
+  const containerStyle = isGrid3 ? styles.containerGrid3 : styles.containerGrid2;
+  const coverHeight = isGrid3 ? 145 : 190;
+
   return (
     <TouchableOpacity
-      style={[styles.container, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+      style={[containerStyle, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
       activeOpacity={0.85}
       onPress={() => onPress(book)}
       onLongPress={() => onLongPress && onLongPress(book)}
       delayLongPress={400}
     >
-      {/* Cover Image or Real Book First Page Style Container */}
-      <View style={[styles.coverWrapper, { backgroundColor: theme.bg }]}>
+      <View style={[styles.coverWrapper, { height: coverHeight, backgroundColor: theme.bg }]}>
         {book.coverPath && book.coverPath.length > 50 ? (
           <Image source={{ uri: book.coverPath }} style={styles.coverImage} resizeMode="cover" />
         ) : (
           <View style={[styles.bookCoverPage, { backgroundColor: badge.bgGradient }]}>
-            {/* Book Spine Overlay Effect */}
             <View style={styles.spineShadow} />
-
-            {/* Document / Cover Header */}
             <View style={styles.coverHeader}>
               <View style={[styles.badge, { backgroundColor: badge.color }]}>
                 <Text style={styles.badgeText}>{badge.label}</Text>
               </View>
             </View>
-
-            {/* Book Main Title & Author Preview */}
             <View style={styles.coverBody}>
-              <Feather name={badge.iconName} size={36} color={badge.color} style={{ marginBottom: 10 }} />
-              <Text style={[styles.coverTitleText, { color: theme.textCard }]} numberOfLines={3}>
+              <Feather name={badge.iconName} size={isGrid3 ? 24 : 36} color={badge.color} style={{ marginBottom: 6 }} />
+              <Text style={[styles.coverTitleText, { color: theme.textCard, fontSize: isGrid3 ? 11 : 14 }]} numberOfLines={2}>
                 {book.title}
-              </Text>
-              <View style={[styles.titleUnderline, { backgroundColor: badge.color }]} />
-              <Text style={[styles.coverAuthorText, { color: theme.textSecondary }]} numberOfLines={1}>
-                {book.author}
               </Text>
             </View>
           </View>
         )}
 
-        {/* Favorite Star */}
         <TouchableOpacity
           style={styles.favoriteButton}
           onPress={() => onToggleFavorite && onToggleFavorite(book.id, book.favorite)}
         >
           <Ionicons
             name={book.favorite ? 'star' : 'star-outline'}
-            size={18}
+            size={16}
             color={book.favorite ? '#F1C40F' : '#FFFFFF88'}
           />
         </TouchableOpacity>
       </View>
 
-      {/* Book Metadata Footer */}
-      <View style={styles.details}>
-        <Text style={[styles.title, { color: theme.textCard }]} numberOfLines={1}>
+      <View style={[styles.details, { padding: isGrid3 ? 6 : 10 }]}>
+        <Text style={[styles.title, { color: theme.textCard, fontSize: isGrid3 ? 11 : 13 }]} numberOfLines={1}>
           {book.title}
         </Text>
-        <Text style={[styles.author, { color: theme.textSecondary }]} numberOfLines={1}>
-          {book.author}
-        </Text>
-
-        {/* Progress Bar */}
+        {!isGrid3 && (
+          <Text style={[styles.author, { color: theme.textSecondary }]} numberOfLines={1}>
+            {book.author}
+          </Text>
+        )}
         <View style={styles.progressContainer}>
           <View style={[styles.progressBarBackground, { backgroundColor: theme.bgChip }]}>
-            <View style={[styles.progressBarFill, { backgroundColor: theme.accent, width: `${Math.min(100, Math.max(0, book.progressPercentage))}%` }]} />
+            <View
+              style={[
+                styles.progressBarFill,
+                { backgroundColor: theme.accent, width: `${Math.min(100, Math.max(0, book.progressPercentage))}%` },
+              ]}
+            />
           </View>
           <Text style={[styles.progressText, { color: theme.textMuted }]} numberOfLines={1}>
             {book.currentChapter || `${Math.round(book.progressPercentage)}%`}
@@ -104,9 +175,9 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onPress, onLongPress, 
 };
 
 const styles = StyleSheet.create({
-  container: {
+  containerGrid2: {
     width: '47%',
-    marginBottom: 20,
+    marginBottom: 16,
     borderRadius: 14,
     borderWidth: 1,
     shadowColor: '#000',
@@ -116,9 +187,68 @@ const styles = StyleSheet.create({
     elevation: 4,
     overflow: 'hidden',
   },
+  containerGrid3: {
+    width: '31%',
+    marginBottom: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  listContainer: {
+    width: '100%',
+    flexDirection: 'row',
+    marginBottom: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 10,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  listCoverWrapper: {
+    width: 62,
+    height: 86,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginRight: 12,
+  },
+  listDetails: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  listHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  listTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 6,
+  },
+  listFavoriteButton: {
+    padding: 4,
+  },
+  listAuthor: {
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  listFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   coverWrapper: {
     width: '100%',
-    height: 190,
     position: 'relative',
   },
   coverImage: {
