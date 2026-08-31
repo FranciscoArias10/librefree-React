@@ -182,15 +182,6 @@ export default function ReaderScreen() {
     }
   };
 
-  if (loading || !book) {
-    return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator size="large" color={theme.accent} />
-        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Abriendo documento...</Text>
-      </View>
-    );
-  }
-
   const htmlSource = useMemo(() => {
     if (!book) return '';
     if (book.format === 'EPUB') {
@@ -201,6 +192,15 @@ export default function ReaderScreen() {
     }
     return getTxtReaderHTML(bookData.content, book.title, settings);
   }, [book?.id, bookData.content]);
+
+  if (loading || !book) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator size="large" color={theme.accent} />
+        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Abriendo documento...</Text>
+      </View>
+    );
+  }
 
   const getBackgroundColor = () => {
     if (settings.themeMode === 'sepia') return '#F8F1E3';
