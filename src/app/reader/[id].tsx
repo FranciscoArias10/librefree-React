@@ -51,7 +51,9 @@ export default function ReaderScreen() {
   const [currentCfi, setCurrentCfi] = useState<string>('');
   const [currentChapter, setCurrentChapter] = useState<string>('');
   const [controlsVisible, setControlsVisible] = useState(false);
-  const [ttsVisible, setTtsVisible] = useState(false);
+  const [ttsActive, setTtsActive] = useState(false);
+  const [fullPlayerVisible, setFullPlayerVisible] = useState(false);
+  const [ttsIsPlaying, setTtsIsPlaying] = useState(false);
   const [selectedText, setSelectedText] = useState<string>('');
   const [currentPageText, setCurrentPageText] = useState<string>('');
   const [pageLabel, setPageLabel] = useState<string>('Página 1');
@@ -271,9 +273,15 @@ export default function ReaderScreen() {
           </View>
 
           <View style={styles.actionsRow}>
-            {/* TTS Button */}
-            <TouchableOpacity style={styles.iconBtn} onPress={() => setTtsVisible(!ttsVisible)}>
-              <Feather name="volume-2" size={20} color={ttsVisible ? '#3182CE' : getTextColor()} />
+            {/* TTS / Audio Button */}
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => {
+                setTtsActive(true);
+                setFullPlayerVisible(true);
+              }}
+            >
+              <Feather name="volume-2" size={20} color={ttsActive ? '#3182CE' : getTextColor()} />
             </TouchableOpacity>
 
             {/* Bookmark Button */}
@@ -289,41 +297,85 @@ export default function ReaderScreen() {
         </View>
       )}
 
-      {/* Reader Floating Bottom Navigation Bar Overlay */}
+      {/* Floating Bottom Bar: Mini Audio Player Bar or Page Navigation Bar */}
       {barsVisible && (
-        <View
-          style={[
-            styles.bottomBar,
-            {
-              bottom: dynamicReaderBottom,
-              backgroundColor: settings.themeMode === 'dark' || settings.themeMode === 'oled' ? 'rgba(30, 30, 46, 0.94)' : 'rgba(255, 255, 255, 0.94)',
-              borderColor: getTextColor() + '22',
-            },
-          ]}
-        >
-          <TouchableOpacity style={styles.pageBtn} onPress={handlePrevPage}>
-            <Feather name="chevron-left" size={22} color={getTextColor()} />
-          </TouchableOpacity>
+        ttsActive ? (
+          <View
+            style={[
+              styles.bottomBar,
+              {
+                bottom: dynamicReaderBottom,
+                backgroundColor: settings.themeMode === 'dark' || settings.themeMode === 'oled' ? 'rgba(30, 30, 46, 0.96)' : 'rgba(255, 255, 255, 0.96)',
+                borderColor: '#8E44AD44',
+                paddingHorizontal: 14,
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={[styles.miniPlayBtnCircle, { backgroundColor: '#8E44AD' }]}
+              onPress={() => setFullPlayerVisible(true)}
+            >
+              <FontAwesome name="headphones" size={14} color="#FFFFFF" />
+            </TouchableOpacity>
 
-          <View style={styles.progressWrapper}>
-            <View style={[styles.progressTrack, { backgroundColor: getTextColor() + '20' }]}>
-              <View style={[styles.progressFill, { width: `${progress}%` }]} />
-            </View>
-            <Text style={[styles.progressLabel, { color: getTextColor() }]}>{pageLabel}</Text>
+            <TouchableOpacity style={styles.miniTextFlex} onPress={() => setFullPlayerVisible(true)} activeOpacity={0.8}>
+              <Text style={[styles.miniTextTitle, { color: getTextColor() }]} numberOfLines={1}>
+                {pageLabel} • Audio en vivo
+              </Text>
+              <Text style={[styles.miniTextSub, { color: getTextColor(), opacity: 0.7 }]} numberOfLines={1}>
+                {currentChapter || `Escuchando a partir del ${Math.round(progress)}%`}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setFullPlayerVisible(true)}>
+              <Feather name="chevron-up" size={22} color={getTextColor()} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => {
+                setTtsActive(false);
+                stopSpeech();
+              }}
+            >
+              <Feather name="x" size={18} color="#EF4444" />
+            </TouchableOpacity>
           </View>
+        ) : (
+          <View
+            style={[
+              styles.bottomBar,
+              {
+                bottom: dynamicReaderBottom,
+                backgroundColor: settings.themeMode === 'dark' || settings.themeMode === 'oled' ? 'rgba(30, 30, 46, 0.94)' : 'rgba(255, 255, 255, 0.94)',
+                borderColor: getTextColor() + '22',
+              },
+            ]}
+          >
+            <TouchableOpacity style={styles.pageBtn} onPress={handlePrevPage}>
+              <Feather name="chevron-left" size={22} color={getTextColor()} />
+            </TouchableOpacity>
 
-          <TouchableOpacity style={styles.pageBtn} onPress={handleNextPage}>
-            <Feather name="chevron-right" size={22} color={getTextColor()} />
-          </TouchableOpacity>
-        </View>
+            <View style={styles.progressWrapper}>
+              <View style={[styles.progressTrack, { backgroundColor: getTextColor() + '20' }]}>
+                <View style={[styles.progressFill, { width: `${progress}%` }]} />
+              </View>
+              <Text style={[styles.progressLabel, { color: getTextColor() }]}>{pageLabel}</Text>
+            </View>
+
+            <TouchableOpacity style={styles.pageBtn} onPress={handleNextPage}>
+              <Feather name="chevron-right" size={22} color={getTextColor()} />
+            </TouchableOpacity>
+          </View>
+        )
       )}
 
       {/* Audio & Voice Player Modal */}
       <AudioPlayerModal
-        visible={ttsVisible}
+        visible={fullPlayerVisible}
         book={book}
         initialProgressPercentage={progress}
-        onClose={() => setTtsVisible(false)}
+        onClose={() => setFullPlayerVisible(false)}
       />
 
       {/* Reader Customization Drawer Modal */}
@@ -427,5 +479,25 @@ const styles = StyleSheet.create({
   progressLabel: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  miniPlayBtnCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  miniTextFlex: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  miniTextTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  miniTextSub: {
+    fontSize: 10,
+    marginTop: 1,
   },
 });

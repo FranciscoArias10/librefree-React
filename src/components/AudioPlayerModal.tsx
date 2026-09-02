@@ -121,15 +121,20 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
           const textToRead = await extractTextFromBook(book!);
           if (!isMounted) return;
 
-          const pctToUse = initialProgressPercentage > 0
+          let pctToUse = initialProgressPercentage > 0
             ? initialProgressPercentage
             : (book!.progressPercentage || 0);
+
+          if (pctToUse > 0 && pctToUse <= 1.0) {
+            pctToUse = pctToUse * 100;
+          }
 
           let startChunk = 0;
           if (pctToUse > 0 && textToRead) {
             const tempChunks = textToRead.split(/(?<=[.!?])\s+/);
             if (tempChunks.length > 0) {
-              startChunk = Math.min(tempChunks.length - 1, Math.floor((pctToUse / 100) * tempChunks.length));
+              const rawIndex = Math.floor((pctToUse / 100) * tempChunks.length);
+              startChunk = Math.min(tempChunks.length - 1, Math.max(0, rawIndex));
             }
           }
 
