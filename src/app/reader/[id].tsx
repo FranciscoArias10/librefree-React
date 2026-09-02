@@ -19,7 +19,7 @@ import { getTxtReaderHTML } from '../../reader/TxtReaderHTML';
 import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
 import { ReaderControlsModal } from '../../components/ReaderControlsModal';
 import { AudioPlayerModal } from '../../components/AudioPlayerModal';
-import { stopSpeech } from '../../services/ttsService';
+import { speakText, stopSpeech } from '../../services/ttsService';
 import { Book, ReadingSettings } from '../../types/book';
 import { Toast } from '../../components/Toast';
 import { Feather, FontAwesome } from '@expo/vector-icons';
@@ -271,16 +271,22 @@ export default function ReaderScreen() {
             </Text>
           </View>
 
-          <View style={styles.actionsRow}>
             {/* TTS / Audio Button */}
             <TouchableOpacity
               style={styles.iconBtn}
               onPress={() => {
                 if (ttsActive) {
                   setTtsActive(false);
+                  setTtsIsPlaying(false);
                   stopSpeech();
                 } else {
                   setTtsActive(true);
+                  setTtsIsPlaying(true);
+                  const textToRead = currentPageText || `Comenzando lectura de ${pageLabel}`;
+                  speakText(textToRead, {
+                    onDone: () => setTtsIsPlaying(false),
+                    onError: () => setTtsIsPlaying(false),
+                  });
                 }
               }}
             >
@@ -316,17 +322,29 @@ export default function ReaderScreen() {
           >
             <TouchableOpacity
               style={[styles.miniPlayBtnCircle, { backgroundColor: '#8E44AD' }]}
-              onPress={() => setFullPlayerVisible(true)}
+              onPress={() => {
+                if (ttsIsPlaying) {
+                  stopSpeech();
+                  setTtsIsPlaying(false);
+                } else {
+                  setTtsIsPlaying(true);
+                  const textToRead = currentPageText || `Leyendo ${pageLabel}`;
+                  speakText(textToRead, {
+                    onDone: () => setTtsIsPlaying(false),
+                    onError: () => setTtsIsPlaying(false),
+                  });
+                }
+              }}
             >
-              <FontAwesome name="headphones" size={14} color="#FFFFFF" />
+              <FontAwesome name={ttsIsPlaying ? 'pause' : 'play'} size={14} color="#FFFFFF" style={{ marginLeft: ttsIsPlaying ? 0 : 2 }} />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.miniTextFlex} onPress={() => setFullPlayerVisible(true)} activeOpacity={0.8}>
               <Text style={[styles.miniTextTitle, { color: getTextColor() }]} numberOfLines={1}>
-                {pageLabel} • Audio en vivo
+                {pageLabel} • Lectura en vivo
               </Text>
               <Text style={[styles.miniTextSub, { color: getTextColor(), opacity: 0.7 }]} numberOfLines={1}>
-                {currentChapter || `Escuchando a partir del ${Math.round(progress)}%`}
+                {currentPageText ? currentPageText.substring(0, 40) + '...' : (currentChapter || `Página actual`)}
               </Text>
             </TouchableOpacity>
 
@@ -338,6 +356,7 @@ export default function ReaderScreen() {
               style={styles.iconBtn}
               onPress={() => {
                 setTtsActive(false);
+                setTtsIsPlaying(false);
                 stopSpeech();
               }}
             >
