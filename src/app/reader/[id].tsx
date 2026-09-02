@@ -271,6 +271,7 @@ export default function ReaderScreen() {
             </Text>
           </View>
 
+          <View style={styles.actionsRow}>
             {/* TTS / Audio Button */}
             <TouchableOpacity
               style={styles.iconBtn}
