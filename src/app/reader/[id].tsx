@@ -219,16 +219,44 @@ export default function ReaderScreen() {
   const baseUrl = FileSystem.documentDirectory || 'file:///';
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: getBackgroundColor(), paddingTop: barsVisible ? androidStatusBarHeight : 0 }]}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: getBackgroundColor() }]}>
       <Toast
         visible={toast.visible}
         message={toast.message}
         type={toast.type}
         onHide={() => setToast((prev) => ({ ...prev, visible: false }))}
       />
-      {/* Reader Top Bar */}
+
+      {/* Main Reader Canvas WebView (Fixed Full Screen Height) */}
+      <View style={styles.readerCanvas}>
+        <WebView
+          ref={webViewRef}
+          originWhitelist={['*']}
+          source={{ html: htmlSource, baseUrl: baseUrl }}
+          onMessage={handleWebViewMessage}
+          style={{ backgroundColor: 'transparent' }}
+          javaScriptEnabled
+          domStorageEnabled
+          allowFileAccess={true}
+          allowFileAccessFromFileURLs={true}
+          allowUniversalAccessFromFileURLs={true}
+          allowingReadAccessToURL="*"
+        />
+      </View>
+
+      {/* Reader Floating Top Bar Overlay */}
       {barsVisible && (
-        <View style={[styles.topBar, { borderBottomColor: getTextColor() + '20' }]}>
+        <View
+          style={[
+            styles.topBar,
+            {
+              paddingTop: androidStatusBarHeight + 6,
+              height: 58 + androidStatusBarHeight,
+              backgroundColor: settings.themeMode === 'dark' || settings.themeMode === 'oled' ? 'rgba(30, 30, 46, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              borderBottomColor: getTextColor() + '20',
+            },
+          ]}
+        >
           <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
             <Feather name="arrow-left" size={22} color={getTextColor()} />
           </TouchableOpacity>
@@ -261,24 +289,7 @@ export default function ReaderScreen() {
         </View>
       )}
 
-      {/* Main Reader Canvas WebView */}
-      <View style={styles.readerCanvas}>
-        <WebView
-          ref={webViewRef}
-          originWhitelist={['*']}
-          source={{ html: htmlSource, baseUrl: baseUrl }}
-          onMessage={handleWebViewMessage}
-          style={{ backgroundColor: 'transparent' }}
-          javaScriptEnabled
-          domStorageEnabled
-          allowFileAccess={true}
-          allowFileAccessFromFileURLs={true}
-          allowUniversalAccessFromFileURLs={true}
-          allowingReadAccessToURL="*"
-        />
-      </View>
-
-      {/* Reader Floating Bottom Navigation Bar */}
+      {/* Reader Floating Bottom Navigation Bar Overlay */}
       {barsVisible && (
         <View
           style={[
@@ -343,7 +354,12 @@ const styles = StyleSheet.create({
     color: '#64748B',
   },
   topBar: {
-    height: 54,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    elevation: 10,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
