@@ -322,6 +322,7 @@ export default function ReaderScreen() {
       <AudioPlayerModal
         visible={ttsVisible}
         book={book}
+        initialProgressPercentage={progress}
         onClose={() => setTtsVisible(false)}
       />
 

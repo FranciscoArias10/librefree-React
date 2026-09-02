@@ -37,21 +37,21 @@ interface AudioPlayerModalProps {
   visible: boolean;
   book: Book | null;
   onClose: () => void;
-  initialChunkIndex?: number;
+  initialProgressPercentage?: number;
 }
 
 export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
   visible,
   book,
   onClose,
-  initialChunkIndex = 0,
+  initialProgressPercentage = 0,
 }) => {
   const { theme } = useTheme();
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentTextSnippet, setCurrentTextSnippet] = useState('');
-  const [currentChunkIndex, setCurrentChunkIndex] = useState(initialChunkIndex);
+  const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
   const [totalChunks, setTotalChunks] = useState(1);
   const [speed, setSpeed] = useState(1.0);
 
@@ -74,13 +74,13 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
       stopTTS();
       setIsPlaying(false);
 
-      let startPos = initialChunkIndex;
-      if (startPos <= 0 && book?.currentLocation) {
-        const parsed = parseInt(book.currentLocation, 10);
-        if (!isNaN(parsed) && parsed > 0) startPos = parsed;
-      }
-
       if (book?.format === 'AUDIOBOOK') {
+        let startPos = 0;
+        if (book.currentLocation) {
+          const parsed = parseInt(book.currentLocation, 10);
+          if (!isNaN(parsed) && parsed > 0) startPos = parsed;
+        }
+
         setAudioPosition(startPos);
         setAudioDuration(book.totalPagesOrDuration || 0);
 
@@ -115,13 +115,25 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
         await playAudio();
         if (isMounted) setIsPlaying(true);
       } else {
-        // PDF, EPUB, TXT -> TTS Generation
+        // PDF, EPUB, TXT -> TTS Generation starting from exact progress percentage!
         try {
           setIsGenerating(true);
           const textToRead = await extractTextFromBook(book!);
           if (!isMounted) return;
 
-          setCurrentChunkIndex(startPos);
+          const pctToUse = initialProgressPercentage > 0
+            ? initialProgressPercentage
+            : (book!.progressPercentage || 0);
+
+          let startChunk = 0;
+          if (pctToUse > 0 && textToRead) {
+            const tempChunks = textToRead.split(/(?<=[.!?])\s+/);
+            if (tempChunks.length > 0) {
+              startChunk = Math.min(tempChunks.length - 1, Math.floor((pctToUse / 100) * tempChunks.length));
+            }
+          }
+
+          setCurrentChunkIndex(startChunk);
 
           startTTSBook(
             textToRead,
@@ -144,7 +156,7 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
               setIsPlaying(false);
               setCurrentTextSnippet('Lectura finalizada.');
             },
-            startPos
+            startChunk
           );
         } catch (err) {
           console.error('Error generando voz TTS:', err);
