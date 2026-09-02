@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -23,8 +22,8 @@ import { AudioPlayerModal } from '../../components/AudioPlayerModal';
 import { stopSpeech } from '../../services/ttsService';
 import { Book, ReadingSettings } from '../../types/book';
 import { Toast } from '../../components/Toast';
-import { Feather } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather, FontAwesome } from '@expo/vector-icons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 
 export default function ReaderScreen() {
