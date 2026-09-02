@@ -24,6 +24,7 @@ import {
   setTTSSpeed,
   jumpToTTSChunk,
   splitTextIntoChunks,
+  isTTSSpeakingForBook,
 } from '../services/ttsService';
 import {
   loadAudiobookTrack,
@@ -72,6 +73,11 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
     let isMounted = true;
 
     async function initPlayer() {
+      if (book?.format !== 'AUDIOBOOK' && isTTSSpeakingForBook(book.id)) {
+        setIsPlaying(true);
+        return;
+      }
+
       stopTTS();
       setIsPlaying(false);
 
@@ -162,7 +168,8 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
               setIsPlaying(false);
               setCurrentTextSnippet('Lectura finalizada.');
             },
-            startChunk
+            startChunk,
+            book!.id
           );
         } catch (err) {
           console.error('Error generando voz TTS:', err);

@@ -12,26 +12,66 @@ let chunks: string[] = [];
 let currentIndex = 0;
 let currentRate = 1.0;
 let onProgressCallback: ((index: number, total: number, text: string) => void) | null = null;
-let onFinishCallback: (() => void) | null = null;
-let isSpeakingActive = false;
-let isManualChange = false;
+let activeBookId: string | null = null;
 
 export function splitTextIntoChunks(text: string, chunkSize: number = 250): string[] {
   if (!text) return [];
-  const sentences = text.split(/(?<=[.!?])\s+/);
+
+  // Strip raw HTML/XML tags, entities, and normalize whitespace to prevent TTS skips
+  const cleaned = text
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[{}$^~%\\\/\[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) return [];
+
+  const sentences = cleaned.split(/(?<=[.!?])\s+/);
   const result: string[] = [];
   let current = '';
 
   for (const sentence of sentences) {
+    if (!sentence.trim()) continue;
     if ((current + ' ' + sentence).length > chunkSize) {
       if (current.trim().length > 0) result.push(current.trim());
-      current = sentence;
+      current = sentence.trim();
     } else {
-      current += (current ? ' ' : '') + sentence;
+      current += (current ? ' ' : '') + sentence.trim();
     }
   }
   if (current.trim().length > 0) result.push(current.trim());
   return result;
+}
+
+export function isTTSSpeakingForBook(bookId: string): boolean {
+  return isSpeakingActive && activeBookId === bookId;
+}
+
+export function isTTSSpeaking(): boolean {
+  return isSpeakingActive;
+}
+
+export function getCurrentTTSChunkIndex(): number {
+  return currentIndex;
+}
+
+export function getTotalTTSChunks(): number {
+  return chunks.length;
+}
+
+export function getCurrentTTSSnippet(): string {
+  if (chunks.length > 0 && currentIndex >= 0 && currentIndex < chunks.length) {
+    return chunks[currentIndex];
+  }
+  return '';
 }
 
 export async function startTTSBook(
@@ -39,9 +79,11 @@ export async function startTTSBook(
   rate: number = 1.0,
   onProgress?: (index: number, total: number, text: string) => void,
   onFinish?: () => void,
-  initialChunkIndex: number = 0
+  initialChunkIndex: number = 0,
+  bookId?: string
 ) {
   stopTTS();
+  activeBookId = bookId || null;
   chunks = splitTextIntoChunks(fullText);
   currentIndex = chunks.length > 0 ? Math.min(Math.max(0, initialChunkIndex), chunks.length - 1) : 0;
   currentRate = rate;
