@@ -23,6 +23,7 @@ import {
   stopTTS,
   setTTSSpeed,
   jumpToTTSChunk,
+  splitTextIntoChunks,
 } from '../services/ttsService';
 import {
   loadAudiobookTrack,
@@ -131,7 +132,7 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
 
           let startChunk = 0;
           if (pctToUse > 0 && textToRead) {
-            const tempChunks = textToRead.split(/(?<=[.!?])\s+/);
+            const tempChunks = splitTextIntoChunks(textToRead);
             if (tempChunks.length > 0) {
               const rawIndex = Math.floor((pctToUse / 100) * tempChunks.length);
               startChunk = Math.min(tempChunks.length - 1, Math.max(0, rawIndex));
