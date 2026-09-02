@@ -276,8 +276,12 @@ export default function ReaderScreen() {
             <TouchableOpacity
               style={styles.iconBtn}
               onPress={() => {
-                setTtsActive(true);
-                setFullPlayerVisible(true);
+                if (ttsActive) {
+                  setTtsActive(false);
+                  stopSpeech();
+                } else {
+                  setTtsActive(true);
+                }
               }}
             >
               <Feather name="volume-2" size={20} color={ttsActive ? '#3182CE' : getTextColor()} />
