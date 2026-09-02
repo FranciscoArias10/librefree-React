@@ -12,6 +12,9 @@ let chunks: string[] = [];
 let currentIndex = 0;
 let currentRate = 1.0;
 let onProgressCallback: ((index: number, total: number, text: string) => void) | null = null;
+let onFinishCallback: (() => void) | null = null;
+let isSpeakingActive = false;
+let isManualChange = false;
 let activeBookId: string | null = null;
 
 export function splitTextIntoChunks(text: string, chunkSize: number = 250): string[] {
