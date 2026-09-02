@@ -19,7 +19,7 @@ import { getEpubReaderHTML } from '../../reader/EpubReaderHTML';
 import { getTxtReaderHTML } from '../../reader/TxtReaderHTML';
 import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
 import { ReaderControlsModal } from '../../components/ReaderControlsModal';
-import { TTSControlBar } from '../../components/TTSControlBar';
+import { AudioPlayerModal } from '../../components/AudioPlayerModal';
 import { stopSpeech } from '../../services/ttsService';
 import { Book, ReadingSettings } from '../../types/book';
 import { Toast } from '../../components/Toast';
@@ -318,13 +318,12 @@ export default function ReaderScreen() {
         </View>
       )}
 
-      {/* Floating TTS Control Bar */}
-      {ttsVisible && (
-        <TTSControlBar
-          currentText={selectedText || currentPageText || `Leyendo libro ${book.title}`}
-          onClose={() => setTtsVisible(false)}
-        />
-      )}
+      {/* Audio & Voice Player Modal */}
+      <AudioPlayerModal
+        visible={ttsVisible}
+        book={book}
+        onClose={() => setTtsVisible(false)}
+      />
 
       {/* Reader Customization Drawer Modal */}
       <ReaderControlsModal
