@@ -6,12 +6,12 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   StatusBar,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getAllBooks, toggleFavorite, deleteBook } from '../../services/database';
 import { pickMultipleBooksByFormat, bulkImportBooks } from '../../services/fileScanner';

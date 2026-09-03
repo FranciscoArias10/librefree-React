@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   Image,
   ScrollView,
@@ -13,6 +12,7 @@ import {
   ActivityIndicator,
   PanResponder,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { getAllBooks, getBookById, updateBookProgress } from '../../services/database';
 import { extractTextFromBook } from '../../services/fileScanner';

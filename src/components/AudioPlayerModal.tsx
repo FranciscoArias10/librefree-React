@@ -7,10 +7,10 @@ import {
   Image,
   ScrollView,
   Modal,
-  SafeAreaView,
   ActivityIndicator,
   PanResponder,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { Book } from '../types/book';
 import { useTheme } from '../context/ThemeContext';
