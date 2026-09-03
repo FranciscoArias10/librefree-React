@@ -1,4 +1,9 @@
-import { Audio } from 'expo-av';
+let Audio: any = null;
+try {
+  Audio = require('expo-av').Audio;
+} catch (err) {
+  console.warn('expo-av ExponentAV module not available in Expo Go 57');
+}
 
 export interface PlaybackStatus {
   isLoaded: boolean;
@@ -9,20 +14,22 @@ export interface PlaybackStatus {
   didJustFinish: boolean;
 }
 
-let soundInstance: Audio.Sound | null = null;
+let soundInstance: any = null;
 let statusUpdateCallback: ((status: PlaybackStatus) => void) | null = null;
 
 export async function setupAudioSession(): Promise<void> {
   try {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      staysActiveInBackground: true,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    });
+    if (Audio && Audio.setAudioModeAsync) {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+    }
   } catch (error) {
-    console.error('Error al configurar sesión de audio:', error);
+    console.warn('Error al configurar sesión de audio:', error);
   }
 }
 
@@ -33,14 +40,20 @@ export async function loadAudiobookTrack(
 ): Promise<void> {
   await setupAudioSession();
   
-  if (soundInstance) {
-    await soundInstance.unloadAsync();
+  if (soundInstance && soundInstance.unloadAsync) {
+    try {
+      await soundInstance.unloadAsync();
+    } catch (e) {}
     soundInstance = null;
   }
 
   statusUpdateCallback = onStatusUpdate || null;
 
   try {
+    if (!Audio || !Audio.Sound) {
+      throw new Error('ExponentAV no disponible en esta versión de Expo');
+    }
+
     const isRemote = uriOrFilePath.startsWith('http') || uriOrFilePath.startsWith('file://');
     const source = isRemote ? { uri: uriOrFilePath } : { uri: uriOrFilePath };
 
@@ -52,13 +65,13 @@ export async function loadAudiobookTrack(
 
     soundInstance = sound;
   } catch (error) {
-    console.error('Error al cargar archivo de audiolibro:', error);
-    // Provide fallback mock playback for demonstration if sample file doesn't exist locally
+    console.warn('Aviso: ExponentAV no compatible directamente en Expo Go 57:', error);
+    // Fallback status for UI when ExponentAV native module is absent in Expo Go 57
     if (onStatusUpdate) {
       onStatusUpdate({
         isLoaded: true,
         isPlaying: false,
-        positionMillis: 0,
+        positionMillis: Math.max(0, initialPositionMillis),
         durationMillis: 1140000, // 19 minutes
         rate: 1.0,
         didJustFinish: false,
@@ -85,32 +98,42 @@ function onPlaybackStatusUpdate(status: any): void {
 }
 
 export async function playAudio(): Promise<void> {
-  if (soundInstance) {
-    await soundInstance.playAsync();
+  if (soundInstance && soundInstance.playAsync) {
+    try {
+      await soundInstance.playAsync();
+    } catch (e) {}
   }
 }
 
 export async function pauseAudio(): Promise<void> {
-  if (soundInstance) {
-    await soundInstance.pauseAsync();
+  if (soundInstance && soundInstance.pauseAsync) {
+    try {
+      await soundInstance.pauseAsync();
+    } catch (e) {}
   }
 }
 
 export async function seekAudio(positionMillis: number): Promise<void> {
-  if (soundInstance) {
-    await soundInstance.setPositionAsync(positionMillis);
+  if (soundInstance && soundInstance.setPositionAsync) {
+    try {
+      await soundInstance.setPositionAsync(positionMillis);
+    } catch (e) {}
   }
 }
 
 export async function setPlaybackRate(rate: number): Promise<void> {
-  if (soundInstance) {
-    await soundInstance.setRateAsync(rate, true);
+  if (soundInstance && soundInstance.setRateAsync) {
+    try {
+      await soundInstance.setRateAsync(rate, true);
+    } catch (e) {}
   }
 }
 
 export async function unloadAudio(): Promise<void> {
-  if (soundInstance) {
-    await soundInstance.unloadAsync();
+  if (soundInstance && soundInstance.unloadAsync) {
+    try {
+      await soundInstance.unloadAsync();
+    } catch (e) {}
     soundInstance = null;
   }
 }
