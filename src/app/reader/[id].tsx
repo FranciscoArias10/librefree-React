@@ -524,5 +524,3 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 });
-
-export default ReaderScreen;
