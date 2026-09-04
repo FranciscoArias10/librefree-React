@@ -107,7 +107,7 @@ export async function pickMultipleBooksByFormat(
     const result = await DocumentPicker.getDocumentAsync({
       type: mimeTypes,
       multiple: true,
-      copyToCacheDirectory: true,
+      copyToCacheDirectory: false,
     });
 
     if (result.canceled || !result.assets || result.assets.length === 0) {
@@ -142,9 +142,10 @@ export async function pickMultipleBooksByFormat(
     return [];
   }
 }
+
 export function normalizePath(path: string): string {
   if (!path) return '';
-  let result = path;
+  let result = path.trim();
   if (
     !result.startsWith('file://') &&
     !result.startsWith('content://') &&
@@ -153,18 +154,6 @@ export function normalizePath(path: string): string {
   ) {
     result = `file://${result}`;
   }
-
-  if (result.startsWith('file://') && (result.includes('%40') || result.includes('%2F'))) {
-    try {
-      const decoded = decodeURIComponent(result);
-      if (decoded.startsWith('file://')) {
-        result = decoded;
-      } else {
-        result = `file://${decoded}`;
-      }
-    } catch (e) {}
-  }
-
   return result;
 }
 
@@ -225,35 +214,11 @@ export async function readUriAsBase64(uri: string): Promise<string> {
     if (data && data.length > 0) return data;
   } catch (e2) {}
 
-  // 3. URI decodificada
-  try {
-    const decoded = decodeURIComponent(normalized);
-    const data = await FileSystem.readAsStringAsync(decoded, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    if (data && data.length > 0) return data;
-  } catch (e3) {}
-
-  // 4. Decodificada sin file://
-  try {
-    const decodedRaw = decodeURIComponent(normalized.replace(/^file:\/\//, ''));
-    const data = await FileSystem.readAsStringAsync(decodedRaw, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    if (data && data.length > 0) return data;
-  } catch (e4) {}
-
-  // 5. Fallback con XMLHttpRequest (evita la advertencia de Response.blob() de React Native)
+  // 3. Fallback con XMLHttpRequest (evita la advertencia de Response.blob() de React Native)
   try {
     const data = await readUriWithXHR(normalized);
     if (data && data.length > 0) return data;
-  } catch (e5) {
-    try {
-      const decoded = decodeURIComponent(normalized);
-      const data = await readUriWithXHR(decoded);
-      if (data && data.length > 0) return data;
-    } catch (e6) {}
-  }
+  } catch (e3) {}
 
   throw new Error(`No se pudo leer URI como Base64: ${uri}`);
 }
@@ -270,36 +235,19 @@ export async function readUriAsText(uri: string): Promise<string> {
     if (text && text.trim().length > 0) return text;
   } catch (e1) {}
 
-  // 2. Decoded FileSystem UTF8
-  try {
-    const decoded = decodeURIComponent(normalized);
-    const text = await FileSystem.readAsStringAsync(decoded, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-    if (text && text.trim().length > 0) return text;
-  } catch (e2) {}
-
-  // 3. Fetch text fallback
+  // 2. Fetch text fallback
   try {
     const response = await fetch(normalized);
     const text = await response.text();
     if (text && text.trim().length > 0) return text;
-  } catch (e3) {
-    try {
-      const decoded = decodeURIComponent(normalized);
-      const response = await fetch(decoded);
-      const text = await response.text();
-      if (text && text.trim().length > 0) return text;
-    } catch (e4) {}
-  }
+  } catch (e2) {}
 
   return '';
 }
 
 export async function ensureBooksDirectoryExists(): Promise<string> {
   const docDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
-  const decodedDocDir = decodeURIComponent(docDir);
-  const booksDir = decodedDocDir.endsWith('/') ? decodedDocDir + 'books/' : decodedDocDir + '/books/';
+  const booksDir = docDir.endsWith('/') ? docDir + 'books/' : docDir + '/books/';
   try {
     const dirInfo = await FileSystem.getInfoAsync(booksDir);
     if (!dirInfo.exists) {
@@ -307,14 +255,6 @@ export async function ensureBooksDirectoryExists(): Promise<string> {
     }
     return booksDir;
   } catch (e) {
-    try {
-      const rawBooksDir = docDir.endsWith('/') ? docDir + 'books/' : docDir + '/books/';
-      const rawDirInfo = await FileSystem.getInfoAsync(rawBooksDir);
-      if (!rawDirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(rawBooksDir, { intermediates: true });
-      }
-      return rawBooksDir;
-    } catch (err2) {}
     return booksDir;
   }
 }
@@ -402,7 +342,7 @@ export async function importBookFromDevice(): Promise<Book | null> {
         'text/html',
         '*/*'
       ],
-      copyToCacheDirectory: true,
+      copyToCacheDirectory: false,
     });
 
     if (result.canceled || !result.assets || result.assets.length === 0) {

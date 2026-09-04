@@ -153,10 +153,17 @@ export function getTxtReaderHTML(
           if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
             highlightText(data.snippet);
           } else if (data.type === 'SEEK_PERCENT') {
-            var p = Math.max(0, Math.min(1, data.payload.percent / 100));
-            var totalHeight = document.documentElement.scrollHeight - window.innerHeight;
-            if (totalHeight > 0) {
-              window.scrollTo({ top: p * totalHeight, behavior: 'auto' });
+            var pct = data.payload.percent;
+            if (pct <= 0) {
+              window.scrollTo({ top: 0, behavior: 'auto' });
+            } else if (pct >= 100) {
+              window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+            } else {
+              var p = pct / 100;
+              var totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+              if (totalHeight > 0) {
+                window.scrollTo({ top: p * totalHeight, behavior: 'auto' });
+              }
             }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;

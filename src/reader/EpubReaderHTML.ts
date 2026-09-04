@@ -438,14 +438,23 @@ export function getEpubReaderHTML(
           } else if (data.type === 'PREV_PAGE') {
             prevPage();
           } else if (data.type === 'SEEK_PERCENT') {
-            if (rendition && book && book.locations) {
-              var p = Math.max(0, Math.min(1, data.payload.percent / 100));
-              var cfi = book.locations.cfiFromPercentage(p);
-              if (cfi) {
-                rendition.display(cfi);
-              } else if (book.spine && book.spine.items && book.spine.items.length > 0) {
-                var idx = Math.floor(p * book.spine.items.length);
-                rendition.display(idx);
+            if (rendition) {
+              var pct = data.payload.percent;
+              if (pct <= 0) {
+                rendition.display(0);
+              } else if (pct >= 100) {
+                if (book && book.spine && book.spine.items && book.spine.items.length > 0) {
+                  rendition.display(book.spine.items.length - 1);
+                }
+              } else if (book && book.locations && book.locations.total > 0) {
+                var p = pct / 100;
+                var cfi = book.locations.cfiFromPercentage(p);
+                if (cfi) {
+                  rendition.display(cfi);
+                } else if (book.spine && book.spine.items) {
+                  var idx = Math.floor(p * book.spine.items.length);
+                  rendition.display(idx);
+                }
               }
             }
           } else if (data.type === 'UPDATE_SETTINGS') {

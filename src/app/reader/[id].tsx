@@ -29,6 +29,7 @@ import { useTheme } from '../../context/ThemeContext';
 
 interface TopProgressScrubberProps {
   progress: number;
+  totalPages?: number;
   textColor: string;
   themeMode: string;
   onSeek: (percent: number) => void;
@@ -36,6 +37,7 @@ interface TopProgressScrubberProps {
 
 const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
   progress,
+  totalPages = 350,
   textColor,
   themeMode,
   onSeek,
@@ -53,6 +55,8 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
   }, [progress, isDragging]);
 
   const currentPercent = isDragging ? dragPercent : progress;
+  const total = totalPages && totalPages > 0 ? totalPages : 350;
+  const estimatedPage = currentPercent <= 0 ? 1 : (currentPercent >= 100 ? total : Math.max(1, Math.min(total, Math.round((currentPercent / 100) * total))));
 
   const panResponder = useRef(
     PanResponder.create({
@@ -147,8 +151,8 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
       </View>
 
       {isDragging && (
-        <View style={[styles.tooltipBadge, { left: `${Math.max(10, Math.min(90, currentPercent))}%` }]}>
-          <Text style={styles.tooltipText}>{currentPercent}%</Text>
+        <View style={[styles.tooltipBadge, { left: `${Math.max(16, Math.min(84, currentPercent))}%` }]}>
+          <Text style={styles.tooltipText}>Pág. {estimatedPage} de {total} ({currentPercent}%)</Text>
         </View>
       )}
     </View>
@@ -185,6 +189,7 @@ export default function ReaderScreen() {
   const [selectedText, setSelectedText] = useState<string>('');
   const [currentPageText, setCurrentPageText] = useState<string>('');
   const [pageLabel, setPageLabel] = useState<string>('Página 1');
+  const [totalPages, setTotalPages] = useState<number>(350);
   const [barsVisible, setBarsVisible] = useState(true);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
     visible: false,
@@ -247,12 +252,13 @@ export default function ReaderScreen() {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'LOCATION_CHANGED' || data.type === 'PROGRESS_UPDATE') {
-        const { cfi, page, percent, chapter, progress: payloadProgress } = data.payload;
+        const { cfi, page, percent, totalPages: payloadTotalPages, chapter, progress: payloadProgress } = data.payload;
         const actualPercent = percent !== undefined ? percent : payloadProgress;
         
         if (actualPercent !== undefined) setProgress(actualPercent);
         if (cfi) setCurrentCfi(String(cfi));
         if (chapter) setCurrentChapter(chapter);
+        if (payloadTotalPages && payloadTotalPages > 0) setTotalPages(payloadTotalPages);
 
         if (chapter && chapter.toLowerCase().includes('página')) {
           setPageLabel(chapter);
@@ -448,6 +454,7 @@ export default function ReaderScreen() {
           {/* Quick Progress Scrubber (El punto desplazable superior) */}
           <TopProgressScrubber
             progress={progress}
+            totalPages={totalPages}
             textColor={getTextColor()}
             themeMode={settings.themeMode}
             onSeek={(pct) => {
