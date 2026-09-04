@@ -286,8 +286,17 @@ export default function ReaderScreen() {
                   setTtsIsPlaying(true);
                   const textToRead = currentPageText || `Comenzando lectura de ${pageLabel}`;
                   speakText(textToRead, {
-                    onDone: () => setTtsIsPlaying(false),
-                    onError: () => setTtsIsPlaying(false),
+                    onProgress: (idx, tot, snippet) => {
+                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet }));
+                    },
+                    onDone: () => {
+                      setTtsIsPlaying(false);
+                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
+                    },
+                    onError: () => {
+                      setTtsIsPlaying(false);
+                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
+                    },
                   });
                 }
               }}
@@ -332,8 +341,17 @@ export default function ReaderScreen() {
                   setTtsIsPlaying(true);
                   const textToRead = currentPageText || `Leyendo ${pageLabel}`;
                   speakText(textToRead, {
-                    onDone: () => setTtsIsPlaying(false),
-                    onError: () => setTtsIsPlaying(false),
+                    onProgress: (idx, tot, snippet) => {
+                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet }));
+                    },
+                    onDone: () => {
+                      setTtsIsPlaying(false);
+                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
+                    },
+                    onError: () => {
+                      setTtsIsPlaying(false);
+                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
+                    },
                   });
                 }
               }}

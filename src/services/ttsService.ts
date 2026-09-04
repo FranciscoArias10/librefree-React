@@ -190,9 +190,17 @@ export function jumpToTTSChunk(index: number) {
   }
 }
 
-export async function speakText(text: string, options?: { rate?: number; onDone?: () => void; onError?: () => void }) {
+export async function speakText(
+  text: string,
+  options?: {
+    rate?: number;
+    onDone?: () => void;
+    onError?: () => void;
+    onProgress?: (index: number, total: number, text: string) => void;
+  }
+) {
   const rate = options?.rate || 1.0;
-  startTTSBook(text, rate, undefined, options?.onDone);
+  startTTSBook(text, rate, options?.onProgress, options?.onDone);
 }
 
 export async function stopSpeech(): Promise<void> {
