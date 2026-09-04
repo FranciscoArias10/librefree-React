@@ -1,8 +1,14 @@
 import React, { useEffect } from 'react';
+import { LogBox } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { initDatabase } from '../services/database';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
+
+LogBox.ignoreLogs([
+  "Can't perform a React state update on a component that hasn't mounted yet",
+  "expo-av ExponentAV module not available",
+]);
 
 function RootLayoutInner() {
   const { theme } = useTheme();
