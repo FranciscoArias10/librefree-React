@@ -6,8 +6,10 @@ import { initDatabase } from '../services/database';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 
 LogBox.ignoreLogs([
-  "Can't perform a React state update on a component that hasn't mounted yet",
-  "expo-av ExponentAV module not available",
+  "Can't perform a React state update",
+  "hasn't mounted yet",
+  "useLinking",
+  "ExponentAV",
 ]);
 
 function RootLayoutInner() {
