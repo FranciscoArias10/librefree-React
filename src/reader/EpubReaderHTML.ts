@@ -428,6 +428,12 @@ export function getEpubReaderHTML(
       }
 
       // React Native WebView message handler
+      // NOTA CORRECCIÓN DE ERRORES:
+      // 1. En Android WebView, los eventos postMessage se despachan a 'document' y no únicamente a 'window'.
+      //    Se registran oyentes en ambos ('window' y 'document') para garantizar que los saltos de lectura funcionen en cualquier dispositivo.
+      // 2. rendition.display(target) en epub.js REQUIERE una cadena CFI o un 'href' (book.spine.items[i].href).
+      //    Pasar un número entero (ej. 0 o 5) lanzaba un TypeError no capturado (target.indexOf is not a function).
+      // 3. Se incluye un fallback a 'spine.items[idx].href' si 'book.locations' no ha terminado de calcularse en segundo plano.
       function handleMessage(event: any) {
         try {
           var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;

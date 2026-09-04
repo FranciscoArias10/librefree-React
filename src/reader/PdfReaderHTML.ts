@@ -213,6 +213,11 @@ export function getPdfReaderHTML(
         return offCanvas;
       }
 
+      // CORRECCIÓN DE ERRORES:
+      // Cola de páginas pendientes de renderizado (pendingPageToRender).
+      // Al arrastrar rápido el marcador en PDF, si una página estaba renderizándose (isRendering = true),
+      // los nuevos saltos se descartaban. Con esta cola, al terminar el renderizado actual se dibuja
+      // automáticamente la última página solicitada por el usuario.
       var pendingPageToRender: number | null = null;
 
       async function renderPage(pageNum: number) {
