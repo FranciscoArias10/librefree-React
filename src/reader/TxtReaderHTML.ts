@@ -69,6 +69,10 @@ export function getTxtReaderHTML(
       var fullText = ${escapedText};
       document.getElementById('content').innerText = fullText;
 
+      function escapeRegExp(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\\\$&');
+      }
+
       function highlightText(snippet) {
         var old = document.querySelectorAll('.tts-highlight');
         old.forEach(function(el) {
@@ -85,7 +89,7 @@ export function getTxtReaderHTML(
         if (!contentDiv) return;
 
         var fullHtml = contentDiv.innerHTML;
-        var escaped = cleanSnippet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var escaped = escapeRegExp(cleanSnippet);
         var regex = new RegExp('(' + escaped + ')', 'gi');
 
         if (regex.test(fullHtml)) {
@@ -95,7 +99,7 @@ export function getTxtReaderHTML(
         } else {
           var shortSnippet = cleanSnippet.substring(0, 25).trim();
           if (shortSnippet.length > 5) {
-            var shortEscaped = shortSnippet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var shortEscaped = escapeRegExp(shortSnippet);
             var shortRegex = new RegExp('(' + shortEscaped + ')', 'gi');
             if (shortRegex.test(fullHtml)) {
               contentDiv.innerHTML = fullHtml.replace(shortRegex, '<mark class="tts-highlight">$1</mark>');
