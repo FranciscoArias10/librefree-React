@@ -143,49 +143,82 @@ export async function pickMultipleBooksByFormat(
   }
 }
 
+export function normalizePath(path: string): string {
+  if (!path) return '';
+  if (
+    path.startsWith('file://') ||
+    path.startsWith('content://') ||
+    path.startsWith('http://') ||
+    path.startsWith('https://')
+  ) {
+    return path;
+  }
+  return `file://${path}`;
+}
+
+export async function ensureBooksDirectoryExists(): Promise<string> {
+  const docDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
+  const decodedDocDir = decodeURIComponent(docDir);
+  const booksDir = decodedDocDir.endsWith('/') ? decodedDocDir + 'books/' : decodedDocDir + '/books/';
+  try {
+    const dirInfo = await FileSystem.getInfoAsync(booksDir);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(booksDir, { intermediates: true });
+    }
+    return booksDir;
+  } catch (e) {
+    try {
+      const rawBooksDir = docDir.endsWith('/') ? docDir + 'books/' : docDir + '/books/';
+      const rawDirInfo = await FileSystem.getInfoAsync(rawBooksDir);
+      if (!rawDirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(rawBooksDir, { intermediates: true });
+      }
+      return rawBooksDir;
+    } catch (err2) {}
+    return booksDir;
+  }
+}
+
 export async function bulkImportBooks(filesToImport: ScannedFile[]): Promise<Book[]> {
   const importedBooks: Book[] = [];
-
-  const docDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
-  const booksDir = docDir.endsWith('/') ? docDir + 'books/' : docDir + '/books/';
-  
-  const dirInfo = await FileSystem.getInfoAsync(booksDir);
-  if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(booksDir, { intermediates: true });
-  }
+  const booksDir = await ensureBooksDirectoryExists();
 
   for (const item of filesToImport) {
     try {
       const cleanFileName = `${Date.now()}_${item.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
       const targetPath = booksDir + cleanFileName;
-      const sourceUri = item.uri.startsWith('file://') ? item.uri : `file://${item.uri}`;
+      const rawUri = normalizePath(item.uri);
 
-      let copySuccess = false;
+      let copiedSuccessfully = false;
       try {
         await FileSystem.copyAsync({
-          from: sourceUri,
+          from: rawUri,
           to: targetPath,
         });
-        copySuccess = true;
+        copiedSuccessfully = true;
       } catch (e1) {
         try {
-          await FileSystem.moveAsync({
-            from: sourceUri,
-            to: targetPath,
+          const base64Data = await FileSystem.readAsStringAsync(rawUri, {
+            encoding: FileSystem.EncodingType.Base64,
           });
-          copySuccess = true;
+          await FileSystem.writeAsStringAsync(targetPath, base64Data, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          copiedSuccessfully = true;
         } catch (e2) {
-          try {
-            await FileSystem.downloadAsync(sourceUri, targetPath);
-            copySuccess = true;
-          } catch (e3) {
-            console.warn('No se pudo copiar archivo directamente:', e3);
-          }
+          console.warn('No se pudo copiar ni leer por Base64:', e2);
         }
       }
 
-      const fileStats = await FileSystem.getInfoAsync(targetPath);
-      const finalSize = (fileStats.exists && fileStats.size) ? fileStats.size : item.size;
+      let fileStats = await FileSystem.getInfoAsync(targetPath);
+      let finalFilePath = targetPath;
+      let finalSize = item.size || 0;
+
+      if (fileStats.exists && fileStats.size) {
+        finalSize = fileStats.size;
+      } else {
+        finalFilePath = rawUri;
+      }
 
       const titleWithoutExt = item.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
       let title = titleWithoutExt;
@@ -201,7 +234,7 @@ export async function bulkImportBooks(filesToImport: ScannedFile[]): Promise<Boo
         title,
         author,
         format: item.format,
-        filePath: targetPath,
+        filePath: finalFilePath,
         coverPath: item.coverPath || undefined,
         fileSize: finalSize,
         progressPercentage: 0,
@@ -247,33 +280,38 @@ export async function importBookFromDevice(): Promise<Book | null> {
     else if (extension === 'pdf') format = 'PDF';
     else if (extension === 'mp3' || extension === 'm4b' || asset.mimeType?.includes('audio')) format = 'AUDIOBOOK';
 
-    const docDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
-    const booksDir = docDir.endsWith('/') ? docDir + 'books/' : docDir + '/books/';
-    
-    const dirInfo = await FileSystem.getInfoAsync(booksDir);
-    if (!dirInfo.exists) {
-      await FileSystem.makeDirectoryAsync(booksDir, { intermediates: true });
-    }
-
+    const booksDir = await ensureBooksDirectoryExists();
     const cleanFileName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const targetPath = booksDir + cleanFileName;
+    const rawUri = normalizePath(asset.uri);
 
     try {
       await FileSystem.copyAsync({
-        from: asset.uri,
+        from: rawUri,
         to: targetPath,
       });
     } catch (readErr) {
-      const base64Data = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      await FileSystem.writeAsStringAsync(targetPath, base64Data, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      try {
+        const base64Data = await FileSystem.readAsStringAsync(rawUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.writeAsStringAsync(targetPath, base64Data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      } catch (e2) {
+        console.warn('No se pudo copiar ni leer por Base64:', e2);
+      }
     }
 
-    const fileStats = await FileSystem.getInfoAsync(targetPath);
-    const finalSize = (fileStats.exists && fileStats.size) ? fileStats.size : (asset.size || 0);
+    let fileStats = await FileSystem.getInfoAsync(targetPath);
+    let finalFilePath = targetPath;
+    let finalSize = asset.size || 0;
+
+    if (fileStats.exists && fileStats.size) {
+      finalSize = fileStats.size;
+    } else {
+      finalFilePath = rawUri;
+    }
 
     const titleWithoutExt = fileName.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
     let title = titleWithoutExt;
@@ -289,7 +327,7 @@ export async function importBookFromDevice(): Promise<Book | null> {
       title,
       author,
       format,
-      filePath: targetPath,
+      filePath: finalFilePath,
       fileSize: finalSize,
       progressPercentage: 0,
       favorite: false,
@@ -305,6 +343,10 @@ export async function importBookFromDevice(): Promise<Book | null> {
 
 export async function readBookContent(filePath: string, format: BookFormat): Promise<{ content: string; isBase64: boolean }> {
   try {
+    if (!filePath) {
+      return { content: '', isBase64: false };
+    }
+
     if (filePath.startsWith('sample_')) {
       if (format === 'EPUB') {
         return { content: '', isBase64: false };
@@ -312,13 +354,18 @@ export async function readBookContent(filePath: string, format: BookFormat): Pro
       return { content: SAMPLE_PRINCIPITO_TEXT, isBase64: false };
     }
 
-    const normalizedPath = filePath.startsWith('file://') ? filePath : `file://${filePath}`;
+    const normalizedPath = normalizePath(filePath);
 
     if (format === 'EPUB') {
-      const base64Data = await FileSystem.readAsStringAsync(normalizedPath, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      return { content: base64Data, isBase64: true };
+      try {
+        const base64Data = await FileSystem.readAsStringAsync(normalizedPath, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return { content: base64Data, isBase64: true };
+      } catch (err) {
+        console.error('Error leyendo base64 de EPUB:', err);
+        return { content: '', isBase64: false };
+      }
     } else if (format === 'PDF') {
       try {
         const base64Data = await FileSystem.readAsStringAsync(normalizedPath, {
@@ -329,13 +376,18 @@ export async function readBookContent(filePath: string, format: BookFormat): Pro
         return { content: normalizedPath, isBase64: false };
       }
     } else {
-      const textContent = await FileSystem.readAsStringAsync(normalizedPath, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      if (!textContent || textContent.trim().length === 0) {
-        return { content: 'El archivo de texto no contiene caracteres legibles.', isBase64: false };
+      try {
+        const textContent = await FileSystem.readAsStringAsync(normalizedPath, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        if (!textContent || textContent.trim().length === 0) {
+          return { content: 'El archivo de texto no contiene caracteres legibles.', isBase64: false };
+        }
+        return { content: textContent, isBase64: false };
+      } catch (err) {
+        console.error('Error leyendo UTF8 de TXT:', err);
+        return { content: 'Error: No se pudo cargar el contenido del archivo local.', isBase64: false };
       }
-      return { content: textContent, isBase64: false };
     }
   } catch (error) {
     console.error('Error leyendo archivo de libro:', error);
@@ -399,11 +451,13 @@ export async function extractTextFromBook(book: Book): Promise<string> {
       return SAMPLE_PRINCIPITO_TEXT;
     }
 
-    const normalizedPath = book.filePath.startsWith('file://') ? book.filePath : `file://${book.filePath}`;
+    const normalizedPath = normalizePath(book.filePath);
 
     if (book.format === 'TXT') {
-      const txt = await FileSystem.readAsStringAsync(normalizedPath, { encoding: FileSystem.EncodingType.UTF8 });
-      return txt && txt.trim().length > 0 ? txt : `Lectura de ${book.title}.`;
+      try {
+        const txt = await FileSystem.readAsStringAsync(normalizedPath, { encoding: FileSystem.EncodingType.UTF8 });
+        if (txt && txt.trim().length > 0) return txt;
+      } catch (e) {}
     }
 
     if (book.format === 'EPUB') {

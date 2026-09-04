@@ -25,7 +25,7 @@ function RootLayoutInner() {
   const { theme } = useTheme();
   return (
     <>
-      <StatusBar style={theme.statusBar} backgroundColor={theme.bgHeader} />
+      <StatusBar style={theme.statusBar} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen

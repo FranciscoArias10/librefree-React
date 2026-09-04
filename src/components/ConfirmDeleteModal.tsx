@@ -19,7 +19,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
   onCancel,
 }) => {
   const { theme, themeMode } = useTheme();
-  const isDark = themeMode === 'dark' || themeMode === 'oled';
+  const isDark = (themeMode as string) === 'dark' || (themeMode as string) === 'oled';
 
   if (!visible) return null;
 

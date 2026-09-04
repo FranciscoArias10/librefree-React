@@ -28,6 +28,7 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
   const [currentBook, setCurrentBook] = useState<ProcessingBook | null>(null);
   const [htmlSource, setHtmlSource] = useState<string | null>(null);
   const webViewRef = useRef<WebView>(null);
+  const failedBookIdsRef = useRef<Set<string>>(new Set());
 
   const checkPendingBooks = async () => {
     try {
@@ -42,6 +43,9 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
       );
 
       if (row) {
+        if (failedBookIdsRef.current.has(row.id)) {
+          return;
+        }
         const data = await readBookContent(row.filePath, row.format);
         if (data.content && data.content.length > 5) {
           setCurrentBook({ id: row.id, filePath: row.filePath, format: row.format });
@@ -50,6 +54,10 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
           } else if (row.format === 'EPUB') {
             setHtmlSource(getEpubReaderHTML(data.content, data.isBase64, undefined, DEFAULT_SETTINGS));
           }
+        } else {
+          failedBookIdsRef.current.add(row.id);
+          setCurrentBook(null);
+          setHtmlSource(null);
         }
       } else {
         setCurrentBook(null);

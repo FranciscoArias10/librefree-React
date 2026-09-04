@@ -75,7 +75,7 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
     let isMounted = true;
 
     async function initPlayer() {
-      if (book?.format !== 'AUDIOBOOK' && isTTSSpeakingForBook(book.id)) {
+      if (book?.format !== 'AUDIOBOOK' && book?.id && isTTSSpeakingForBook(book.id)) {
         setIsPlaying(true);
         return;
       }
