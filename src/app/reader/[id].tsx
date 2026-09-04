@@ -8,6 +8,7 @@ import {
   Alert,
   StatusBar,
   Platform,
+  PanResponder,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
@@ -25,6 +26,91 @@ import { Toast } from '../../components/Toast';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
+
+interface TopProgressScrubberProps {
+  progress: number;
+  textColor: string;
+  themeMode: string;
+  onSeek: (percent: number) => void;
+}
+
+const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
+  progress,
+  textColor,
+  themeMode,
+  onSeek,
+}) => {
+  const trackRef = useRef<View>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPercent, setDragPercent] = useState(progress);
+
+  useEffect(() => {
+    if (!isDragging) {
+      setDragPercent(progress);
+    }
+  }, [progress, isDragging]);
+
+  const currentPercent = isDragging ? dragPercent : progress;
+
+  const updateFromNativeEvent = (pageX: number) => {
+    if (!trackRef.current) return currentPercent;
+    let pct = currentPercent;
+    trackRef.current.measure((x, y, width, height, trackPageX) => {
+      if (width > 0) {
+        const relativeX = Math.max(0, Math.min(width, pageX - trackPageX));
+        pct = Math.round((relativeX / width) * 100);
+        setDragPercent(pct);
+      }
+    });
+    return pct;
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        setIsDragging(true);
+        updateFromNativeEvent(evt.nativeEvent.pageX);
+      },
+      onPanResponderMove: (evt) => {
+        updateFromNativeEvent(evt.nativeEvent.pageX);
+      },
+      onPanResponderRelease: (evt) => {
+        setIsDragging(false);
+        if (trackRef.current) {
+          trackRef.current.measure((x, y, width, height, trackPageX) => {
+            if (width > 0) {
+              const relativeX = Math.max(0, Math.min(width, evt.nativeEvent.pageX - trackPageX));
+              const pct = Math.round((relativeX / width) * 100);
+              setDragPercent(pct);
+              onSeek(pct);
+            }
+          });
+        }
+      },
+    })
+  ).current;
+
+  const isDark = themeMode === 'dark' || themeMode === 'oled';
+
+  return (
+    <View style={styles.scrubberWrapper} ref={trackRef} {...panResponder.panHandlers}>
+      <View style={[styles.scrubberTrack, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(0, 0, 0, 0.12)' }]}>
+        <View style={[styles.scrubberFill, { width: `${currentPercent}%` }]} />
+      </View>
+      <View style={[styles.scrubberThumb, { left: `${currentPercent}%` }]}>
+        <View style={styles.scrubberThumbDot} />
+      </View>
+
+      {isDragging && (
+        <View style={[styles.tooltipBadge, { left: `${Math.max(12, Math.min(88, currentPercent))}%` }]}>
+          <Text style={styles.tooltipText}>{currentPercent}%</Text>
+        </View>
+      )}
+    </View>
+  );
+};
 
 export default function ReaderScreen() {
   const router = useRouter();
@@ -251,69 +337,81 @@ export default function ReaderScreen() {
           style={[
             styles.topBar,
             {
-              paddingTop: androidStatusBarHeight + 6,
-              height: 58 + androidStatusBarHeight,
-              backgroundColor: settings.themeMode === 'dark' || settings.themeMode === 'oled' ? 'rgba(30, 30, 46, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              paddingTop: androidStatusBarHeight + 4,
+              backgroundColor: settings.themeMode === 'dark' || settings.themeMode === 'oled' ? 'rgba(30, 30, 46, 0.96)' : 'rgba(255, 255, 255, 0.96)',
               borderBottomColor: getTextColor() + '20',
             },
           ]}
         >
-          <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
-            <Feather name="arrow-left" size={22} color={getTextColor()} />
-          </TouchableOpacity>
+          <View style={styles.topBarRow}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+              <Feather name="arrow-left" size={22} color={getTextColor()} />
+            </TouchableOpacity>
 
-          <View style={styles.titleWrapper}>
-            <Text style={[styles.headerTitle, { color: getTextColor() }]} numberOfLines={1}>
-              {book.title}
-            </Text>
-            <Text style={[styles.headerChapter, { color: getTextColor(), opacity: 0.7 }]} numberOfLines={1}>
-              {currentChapter || book.author}
-            </Text>
+            <View style={styles.titleWrapper}>
+              <Text style={[styles.headerTitle, { color: getTextColor() }]} numberOfLines={1}>
+                {book.title}
+              </Text>
+              <Text style={[styles.headerChapter, { color: getTextColor(), opacity: 0.7 }]} numberOfLines={1}>
+                {currentChapter || book.author}
+              </Text>
+            </View>
+
+            <View style={styles.actionsRow}>
+              {/* TTS / Audio Button */}
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => {
+                  if (ttsActive) {
+                    setTtsActive(false);
+                    setTtsIsPlaying(false);
+                    stopSpeech();
+                    webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
+                  } else {
+                    setTtsActive(true);
+                    setTtsIsPlaying(true);
+                    const textToRead = currentPageText || `Comenzando lectura de ${pageLabel}`;
+                    speakText(textToRead, {
+                      onProgress: (idx, tot, snippet) => {
+                        webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet }));
+                      },
+                      onDone: () => {
+                        setTtsIsPlaying(false);
+                        webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
+                      },
+                      onError: () => {
+                        setTtsIsPlaying(false);
+                        webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
+                      },
+                    });
+                  }
+                }}
+              >
+                <Feather name="volume-2" size={20} color={ttsActive ? '#3182CE' : getTextColor()} />
+              </TouchableOpacity>
+
+              {/* Bookmark Button */}
+              <TouchableOpacity style={styles.iconBtn} onPress={handleAddBookmark}>
+                <Feather name="bookmark" size={20} color={getTextColor()} />
+              </TouchableOpacity>
+
+              {/* Settings Modal Button */}
+              <TouchableOpacity style={styles.iconBtn} onPress={() => setControlsVisible(true)}>
+                <Feather name="sliders" size={20} color={getTextColor()} />
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <View style={styles.actionsRow}>
-            {/* TTS / Audio Button */}
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => {
-                if (ttsActive) {
-                  setTtsActive(false);
-                  setTtsIsPlaying(false);
-                  stopSpeech();
-                  webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
-                } else {
-                  setTtsActive(true);
-                  setTtsIsPlaying(true);
-                  const textToRead = currentPageText || `Comenzando lectura de ${pageLabel}`;
-                  speakText(textToRead, {
-                    onProgress: (idx, tot, snippet) => {
-                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet }));
-                    },
-                    onDone: () => {
-                      setTtsIsPlaying(false);
-                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
-                    },
-                    onError: () => {
-                      setTtsIsPlaying(false);
-                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
-                    },
-                  });
-                }
-              }}
-            >
-              <Feather name="volume-2" size={20} color={ttsActive ? '#3182CE' : getTextColor()} />
-            </TouchableOpacity>
-
-            {/* Bookmark Button */}
-            <TouchableOpacity style={styles.iconBtn} onPress={handleAddBookmark}>
-              <Feather name="bookmark" size={20} color={getTextColor()} />
-            </TouchableOpacity>
-
-            {/* Settings Modal Button */}
-            <TouchableOpacity style={styles.iconBtn} onPress={() => setControlsVisible(true)}>
-              <Feather name="sliders" size={20} color={getTextColor()} />
-            </TouchableOpacity>
-          </View>
+          {/* Quick Progress Scrubber (El punto desplazable superior) */}
+          <TopProgressScrubber
+            progress={progress}
+            textColor={getTextColor()}
+            themeMode={settings.themeMode}
+            onSeek={(pct) => {
+              setProgress(pct);
+              webViewRef.current?.postMessage(JSON.stringify({ type: 'SEEK_PERCENT', payload: { percent: pct } }));
+            }}
+          />
         </View>
       )}
 
@@ -457,10 +555,76 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 100,
     elevation: 10,
+    flexDirection: 'column',
+    borderBottomWidth: 1,
+    paddingBottom: 4,
+  },
+  topBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    borderBottomWidth: 1,
+    height: 48,
+  },
+  scrubberWrapper: {
+    height: 28,
+    marginHorizontal: 16,
+    marginBottom: 4,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  scrubberTrack: {
+    height: 6,
+    borderRadius: 3,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  scrubberFill: {
+    height: '100%',
+    backgroundColor: '#3182CE',
+    borderRadius: 3,
+  },
+  scrubberThumb: {
+    position: 'absolute',
+    top: 3,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#3182CE',
+    marginLeft: -11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  scrubberThumbDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+  },
+  tooltipBadge: {
+    position: 'absolute',
+    bottom: 28,
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: -20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  tooltipText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
   },
   titleWrapper: {
     flex: 1,

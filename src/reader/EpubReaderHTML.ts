@@ -437,6 +437,17 @@ export function getEpubReaderHTML(
             nextPage();
           } else if (data.type === 'PREV_PAGE') {
             prevPage();
+          } else if (data.type === 'SEEK_PERCENT') {
+            if (rendition && book && book.locations) {
+              var p = Math.max(0, Math.min(1, data.payload.percent / 100));
+              var cfi = book.locations.cfiFromPercentage(p);
+              if (cfi) {
+                rendition.display(cfi);
+              } else if (book.spine && book.spine.items && book.spine.items.length > 0) {
+                var idx = Math.floor(p * book.spine.items.length);
+                rendition.display(idx);
+              }
+            }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;
             if (s.themeMode && rendition) {

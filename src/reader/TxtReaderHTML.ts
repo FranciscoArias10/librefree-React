@@ -152,6 +152,12 @@ export function getTxtReaderHTML(
           var data = JSON.parse(event.data);
           if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
             highlightText(data.snippet);
+          } else if (data.type === 'SEEK_PERCENT') {
+            var p = Math.max(0, Math.min(1, data.payload.percent / 100));
+            var totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+            if (totalHeight > 0) {
+              window.scrollTo({ top: p * totalHeight, behavior: 'auto' });
+            }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;
             if (s.fontSize) document.body.style.fontSize = s.fontSize + 'px';

@@ -443,6 +443,11 @@ export function getPdfReaderHTML(
             nextPage();
           } else if (data.type === 'PREV_PAGE') {
             prevPage();
+          } else if (data.type === 'SEEK_PERCENT') {
+            if (pdfDoc && pdfDoc.numPages > 0) {
+              var targetPage = Math.max(1, Math.min(pdfDoc.numPages, Math.round((data.payload.percent / 100) * pdfDoc.numPages)));
+              renderPage(targetPage);
+            }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;
             if (s.themeMode) {
