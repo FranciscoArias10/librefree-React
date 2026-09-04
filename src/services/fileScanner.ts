@@ -158,19 +158,30 @@ export async function bulkImportBooks(filesToImport: ScannedFile[]): Promise<Boo
     try {
       const cleanFileName = `${Date.now()}_${item.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
       const targetPath = booksDir + cleanFileName;
+      const sourceUri = item.uri.startsWith('file://') ? item.uri : `file://${item.uri}`;
 
+      let copySuccess = false;
       try {
         await FileSystem.copyAsync({
-          from: item.uri,
+          from: sourceUri,
           to: targetPath,
         });
-      } catch (e) {
-        const base64Data = await FileSystem.readAsStringAsync(item.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        await FileSystem.writeAsStringAsync(targetPath, base64Data, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+        copySuccess = true;
+      } catch (e1) {
+        try {
+          await FileSystem.moveAsync({
+            from: sourceUri,
+            to: targetPath,
+          });
+          copySuccess = true;
+        } catch (e2) {
+          try {
+            await FileSystem.downloadAsync(sourceUri, targetPath);
+            copySuccess = true;
+          } catch (e3) {
+            console.warn('No se pudo copiar archivo directamente:', e3);
+          }
+        }
       }
 
       const fileStats = await FileSystem.getInfoAsync(targetPath);
