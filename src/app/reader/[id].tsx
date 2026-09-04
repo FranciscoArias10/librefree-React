@@ -41,6 +41,8 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
   onSeek,
 }) => {
   const trackRef = useRef<View>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [trackPageX, setTrackPageX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragPercent, setDragPercent] = useState(progress);
 
@@ -52,41 +54,39 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
 
   const currentPercent = isDragging ? dragPercent : progress;
 
-  const updateFromNativeEvent = (pageX: number) => {
-    if (!trackRef.current) return currentPercent;
-    let pct = currentPercent;
-    trackRef.current.measure((x, y, width, height, trackPageX) => {
-      if (width > 0) {
-        const relativeX = Math.max(0, Math.min(width, pageX - trackPageX));
-        pct = Math.round((relativeX / width) * 100);
-        setDragPercent(pct);
-      }
-    });
-    return pct;
-  };
-
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
         setIsDragging(true);
-        updateFromNativeEvent(evt.nativeEvent.pageX);
+        if (trackRef.current) {
+          trackRef.current.measureInWindow((x, y, w) => {
+            if (w > 0) {
+              setTrackPageX(x);
+              setTrackWidth(w);
+              const relX = Math.max(0, Math.min(w, evt.nativeEvent.pageX - x));
+              const pct = Math.round((relX / w) * 100);
+              setDragPercent(pct);
+            }
+          });
+        }
       },
       onPanResponderMove: (evt) => {
-        updateFromNativeEvent(evt.nativeEvent.pageX);
+        if (trackWidth > 0) {
+          const relX = Math.max(0, Math.min(trackWidth, evt.nativeEvent.pageX - trackPageX));
+          const pct = Math.round((relX / trackWidth) * 100);
+          setDragPercent(pct);
+          onSeek(pct);
+        }
       },
       onPanResponderRelease: (evt) => {
         setIsDragging(false);
-        if (trackRef.current) {
-          trackRef.current.measure((x, y, width, height, trackPageX) => {
-            if (width > 0) {
-              const relativeX = Math.max(0, Math.min(width, evt.nativeEvent.pageX - trackPageX));
-              const pct = Math.round((relativeX / width) * 100);
-              setDragPercent(pct);
-              onSeek(pct);
-            }
-          });
+        if (trackWidth > 0) {
+          const relX = Math.max(0, Math.min(trackWidth, evt.nativeEvent.pageX - trackPageX));
+          const pct = Math.round((relX / trackWidth) * 100);
+          setDragPercent(pct);
+          onSeek(pct);
         }
       },
     })
@@ -95,16 +95,42 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
   const isDark = themeMode === 'dark' || themeMode === 'oled';
 
   return (
-    <View style={styles.scrubberWrapper} ref={trackRef} {...panResponder.panHandlers}>
-      <View style={[styles.scrubberTrack, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(0, 0, 0, 0.12)' }]}>
-        <View style={[styles.scrubberFill, { width: `${currentPercent}%` }]} />
+    <View
+      ref={trackRef}
+      style={styles.scrubberWrapper}
+      onLayout={() => {
+        trackRef.current?.measureInWindow((x, y, w) => {
+          if (w > 0) {
+            setTrackPageX(x);
+            setTrackWidth(w);
+          }
+        });
+      }}
+      {...panResponder.panHandlers}
+    >
+      <View
+        style={[
+          styles.scrubberTrack,
+          { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.07)' },
+        ]}
+      >
+        <View
+          style={[
+            styles.scrubberFill,
+            {
+              width: `${currentPercent}%`,
+              backgroundColor: isDark ? '#60A5FA' : '#2563EB',
+            },
+          ]}
+        />
       </View>
+
       <View style={[styles.scrubberThumb, { left: `${currentPercent}%` }]}>
-        <View style={styles.scrubberThumbDot} />
+        <View style={[styles.scrubberThumbInner, { backgroundColor: isDark ? '#60A5FA' : '#2563EB' }]} />
       </View>
 
       {isDragging && (
-        <View style={[styles.tooltipBadge, { left: `${Math.max(12, Math.min(88, currentPercent))}%` }]}>
+        <View style={[styles.tooltipBadge, { left: `${Math.max(10, Math.min(90, currentPercent))}%` }]}>
           <Text style={styles.tooltipText}>{currentPercent}%</Text>
         </View>
       )}
@@ -566,65 +592,63 @@ const styles = StyleSheet.create({
     height: 48,
   },
   scrubberWrapper: {
-    height: 28,
-    marginHorizontal: 16,
-    marginBottom: 4,
+    height: 24,
+    marginHorizontal: 20,
+    marginBottom: 6,
     justifyContent: 'center',
     position: 'relative',
   },
   scrubberTrack: {
-    height: 6,
-    borderRadius: 3,
+    height: 4,
+    borderRadius: 2,
     width: '100%',
     overflow: 'hidden',
   },
   scrubberFill: {
     height: '100%',
-    backgroundColor: '#3182CE',
-    borderRadius: 3,
+    borderRadius: 2,
   },
   scrubberThumb: {
     position: 'absolute',
     top: 3,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#3182CE',
-    marginLeft: -11,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+    marginLeft: -9,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.15,
     shadowRadius: 4,
-    elevation: 6,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    elevation: 4,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 0, 0, 0.06)',
   },
-  scrubberThumbDot: {
+  scrubberThumbInner: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#FFFFFF',
   },
   tooltipBadge: {
     position: 'absolute',
-    bottom: 28,
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: -20,
+    bottom: 26,
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: -16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 6,
   },
   tooltipText: {
     color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 10,
+    fontWeight: '700',
   },
   titleWrapper: {
     flex: 1,

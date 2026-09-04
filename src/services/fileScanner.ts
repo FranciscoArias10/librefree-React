@@ -168,11 +168,47 @@ export function normalizePath(path: string): string {
   return result;
 }
 
+function readUriWithXHR(uri: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = function () {
+        if (xhr.status === 200 || xhr.status === 0) {
+          const arrayBuffer = xhr.response;
+          if (arrayBuffer) {
+            const bytes = new Uint8Array(arrayBuffer);
+            let binary = '';
+            const chunk = 8192;
+            for (let i = 0; i < bytes.length; i += chunk) {
+              const sub = bytes.subarray(i, i + chunk);
+              binary += String.fromCharCode.apply(null, sub as any);
+            }
+            const b64 = typeof btoa !== 'undefined' ? btoa(binary) : '';
+            resolve(b64);
+          } else {
+            resolve('');
+          }
+        } else {
+          reject(new Error('XHR status ' + xhr.status));
+        }
+      };
+      xhr.onerror = function (err) {
+        reject(err);
+      };
+      xhr.responseType = 'arraybuffer';
+      xhr.open('GET', uri, true);
+      xhr.send();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
 export async function readUriAsBase64(uri: string): Promise<string> {
   if (!uri) throw new Error('URI vacía');
   const normalized = normalizePath(uri);
 
-  // 1. Intentar FileSystem.readAsStringAsync directo
+  // 1. FileSystem.readAsStringAsync directo
   try {
     const data = await FileSystem.readAsStringAsync(normalized, {
       encoding: FileSystem.EncodingType.Base64,
@@ -180,53 +216,43 @@ export async function readUriAsBase64(uri: string): Promise<string> {
     if (data && data.length > 0) return data;
   } catch (e1) {}
 
-  // 2. Intentar con URI decodificada
+  // 2. Stripped file://
+  try {
+    const raw = normalized.replace(/^file:\/\//, '');
+    const data = await FileSystem.readAsStringAsync(raw, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (data && data.length > 0) return data;
+  } catch (e2) {}
+
+  // 3. URI decodificada
   try {
     const decoded = decodeURIComponent(normalized);
     const data = await FileSystem.readAsStringAsync(decoded, {
       encoding: FileSystem.EncodingType.Base64,
     });
     if (data && data.length > 0) return data;
-  } catch (e2) {}
+  } catch (e3) {}
 
-  // 3. Fallback con fetch API de React Native (lee URIs de cache y content provider de Android)
+  // 4. Decodificada sin file://
   try {
-    const response = await fetch(normalized);
-    const blob = await response.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        if (result && result.includes(',')) {
-          resolve(result.split(',')[1]);
-        } else {
-          resolve(result || '');
-        }
-      };
-      reader.onerror = (err) => reject(err);
-      reader.readAsDataURL(blob);
+    const decodedRaw = decodeURIComponent(normalized.replace(/^file:\/\//, ''));
+    const data = await FileSystem.readAsStringAsync(decodedRaw, {
+      encoding: FileSystem.EncodingType.Base64,
     });
-  } catch (e3) {
+    if (data && data.length > 0) return data;
+  } catch (e4) {}
+
+  // 5. Fallback con XMLHttpRequest (evita la advertencia de Response.blob() de React Native)
+  try {
+    const data = await readUriWithXHR(normalized);
+    if (data && data.length > 0) return data;
+  } catch (e5) {
     try {
       const decoded = decodeURIComponent(normalized);
-      const response = await fetch(decoded);
-      const blob = await response.blob();
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          if (result && result.includes(',')) {
-            resolve(result.split(',')[1]);
-          } else {
-            resolve(result || '');
-          }
-        };
-        reader.onerror = (err) => reject(err);
-        reader.readAsDataURL(blob);
-      });
-    } catch (e4) {
-      console.warn('Falló lectura por fetch:', e4);
-    }
+      const data = await readUriWithXHR(decoded);
+      if (data && data.length > 0) return data;
+    } catch (e6) {}
   }
 
   throw new Error(`No se pudo leer URI como Base64: ${uri}`);
