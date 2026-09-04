@@ -396,7 +396,7 @@ export default function ReaderScreen() {
 
       {/* Standalone Full Audio Player Modal */}
       <AudioPlayerModal
-        visible={ttsActive}
+        visible={fullPlayerVisible}
         book={book}
         initialProgressPercentage={progress}
         onClose={() => setFullPlayerVisible(false)}
