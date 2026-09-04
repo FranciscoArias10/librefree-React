@@ -48,13 +48,15 @@ export function getTxtReaderHTML(
       padding-bottom: 12px;
     }
     .tts-highlight {
-      background-color: rgba(255, 235, 59, 0.48) !important;
-      color: #111111 !important;
-      border-radius: 4px;
-      padding: 2px 4px;
-      box-shadow: 0 0 10px rgba(255, 235, 59, 0.7);
-      transition: all 0.3s ease-in-out;
-      display: inline;
+      background: linear-gradient(135deg, #FFE082, #FFCA28) !important;
+      color: #000000 !important;
+      font-weight: 700 !important;
+      border-radius: 6px !important;
+      padding: 2px 6px !important;
+      box-shadow: 0 0 16px rgba(255, 193, 7, 0.9), 0 0 6px rgba(255, 235, 59, 0.8) !important;
+      border: 1px solid #FFD54F !important;
+      transition: all 0.25s ease-in-out !important;
+      display: inline-block !important;
     }
   </style>
 </head>
@@ -69,14 +71,6 @@ export function getTxtReaderHTML(
       var fullText = ${escapedText};
       document.getElementById('content').innerText = fullText;
 
-      function escapeRegExp(str) {
-        var chars = ['\\\\', '.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']', '-'];
-        for (var i = 0; i < chars.length; i++) {
-          str = str.split(chars[i]).join('\\\\' + chars[i]);
-        }
-        return str;
-      }
-
       function highlightText(snippet) {
         var old = document.querySelectorAll('.tts-highlight');
         old.forEach(function(el) {
@@ -88,27 +82,39 @@ export function getTxtReaderHTML(
         });
 
         if (!snippet || !snippet.trim()) return;
-        var cleanSnippet = snippet.trim();
+        var clean = snippet.trim();
         var contentDiv = document.getElementById('content');
         if (!contentDiv) return;
 
-        var fullHtml = contentDiv.innerHTML;
-        var escaped = escapeRegExp(cleanSnippet);
-        var regex = new RegExp('(' + escaped + ')', 'gi');
+        var searchTargets = [
+          clean,
+          clean.length > 30 ? clean.substring(0, 30) : null,
+          clean.length > 20 ? clean.substring(0, 20) : null,
+          clean.length > 12 ? clean.substring(0, 12) : null,
+        ].filter(Boolean);
 
-        if (regex.test(fullHtml)) {
-          contentDiv.innerHTML = fullHtml.replace(regex, '<mark class="tts-highlight">$1</mark>');
-          var markEl = document.querySelector('.tts-highlight');
-          if (markEl) markEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else {
-          var shortSnippet = cleanSnippet.substring(0, 25).trim();
-          if (shortSnippet.length > 5) {
-            var shortEscaped = escapeRegExp(shortSnippet);
-            var shortRegex = new RegExp('(' + shortEscaped + ')', 'gi');
-            if (shortRegex.test(fullHtml)) {
-              contentDiv.innerHTML = fullHtml.replace(shortRegex, '<mark class="tts-highlight">$1</mark>');
-              var markEl = document.querySelector('.tts-highlight');
-              if (markEl) markEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        var walker = document.createTreeWalker(contentDiv, NodeFilter.SHOW_TEXT, null, false);
+        var node;
+
+        while ((node = walker.nextNode())) {
+          var val = node.nodeValue;
+          if (!val || !val.trim()) continue;
+
+          for (var i = 0; i < searchTargets.length; i++) {
+            var target = searchTargets[i];
+            var matchIdx = val.toLowerCase().indexOf(target.toLowerCase());
+            if (matchIdx !== -1) {
+              var mark = document.createElement('mark');
+              mark.className = 'tts-highlight';
+
+              var after = node.splitText(matchIdx);
+              after.nodeValue = after.nodeValue.substring(target.length);
+
+              mark.appendChild(document.createTextNode(val.substring(matchIdx, matchIdx + target.length)));
+              node.parentNode.insertBefore(mark, after);
+
+              mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              return;
             }
           }
         }

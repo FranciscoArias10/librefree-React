@@ -362,59 +362,68 @@ export function getEpubReaderHTML(
 
       function highlightEpubText(snippet) {
         try {
-          var iframe = document.querySelector('iframe');
-          if (!iframe || !iframe.contentDocument) return;
-          var doc = iframe.contentDocument;
+          var iframes = document.querySelectorAll('iframe');
+          if (!iframes || iframes.length === 0) return;
 
-          var old = doc.querySelectorAll('.tts-highlight');
-          old.forEach(function(el) {
-            var parent = el.parentNode;
-            if (parent) {
-              parent.replaceChild(doc.createTextNode(el.innerText || el.textContent), el);
-              parent.normalize();
-            }
+          iframes.forEach(function(iframe) {
+            try {
+              if (!iframe.contentDocument) return;
+              var doc = iframe.contentDocument;
+
+              if (!doc.getElementById('tts-style')) {
+                var st = doc.createElement('style');
+                st.id = 'tts-style';
+                st.innerHTML = '.tts-highlight { background: linear-gradient(135deg, #FFE082, #FFCA28) !important; color: #000000 !important; font-weight: 700 !important; border-radius: 6px !important; padding: 2px 6px !important; box-shadow: 0 0 16px rgba(255, 193, 7, 0.9), 0 0 6px rgba(255, 235, 59, 0.8) !important; border: 1px solid #FFD54F !important; transition: all 0.25s ease !important; display: inline-block !important; }';
+                if (doc.head) doc.head.appendChild(st);
+              }
+
+              var old = doc.querySelectorAll('.tts-highlight');
+              old.forEach(function(el) {
+                var parent = el.parentNode;
+                if (parent) {
+                  parent.replaceChild(doc.createTextNode(el.innerText || el.textContent), el);
+                  parent.normalize();
+                }
+              });
+
+              if (!snippet || !snippet.trim()) return;
+              var clean = snippet.trim();
+              var body = doc.body;
+              if (!body) return;
+
+              var searchTargets = [
+                clean,
+                clean.length > 30 ? clean.substring(0, 30) : null,
+                clean.length > 20 ? clean.substring(0, 20) : null,
+                clean.length > 12 ? clean.substring(0, 12) : null,
+              ].filter(Boolean);
+
+              var walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+              var node;
+              while ((node = walker.nextNode())) {
+                var val = node.nodeValue;
+                if (!val || !val.trim()) continue;
+
+                for (var i = 0; i < searchTargets.length; i++) {
+                  var target = searchTargets[i];
+                  var matchIndex = val.toLowerCase().indexOf(target.toLowerCase());
+                  if (matchIndex !== -1) {
+                    var span = doc.createElement('mark');
+                    span.className = 'tts-highlight';
+
+                    var afterNode = node.splitText(matchIndex);
+                    afterNode.nodeValue = afterNode.nodeValue.substring(target.length);
+
+                    span.appendChild(doc.createTextNode(val.substring(matchIndex, matchIndex + target.length)));
+                    node.parentNode.insertBefore(span, afterNode);
+
+                    span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                  }
+                }
+              }
+            } catch (errFrame) {}
           });
-
-          if (!snippet || !snippet.trim()) return;
-          var cleanSnippet = snippet.trim();
-          var body = doc.body;
-          if (!body) return;
-
-          var walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-          var node;
-          while ((node = walker.nextNode())) {
-            var val = node.nodeValue;
-            if (!val || !val.trim()) continue;
-
-            var matchIndex = val.toLowerCase().indexOf(cleanSnippet.toLowerCase());
-            var matchLen = cleanSnippet.length;
-
-            if (matchIndex === -1 && cleanSnippet.length > 20) {
-              var shortSnippet = cleanSnippet.substring(0, 20);
-              matchIndex = val.toLowerCase().indexOf(shortSnippet.toLowerCase());
-              matchLen = shortSnippet.length;
-            }
-
-            if (matchIndex !== -1) {
-              var span = doc.createElement('mark');
-              span.className = 'tts-highlight';
-              span.style.backgroundColor = 'rgba(255, 235, 59, 0.48)';
-              span.style.color = '#111111';
-              span.style.borderRadius = '4px';
-              span.style.padding = '2px 4px';
-              span.style.boxShadow = '0 0 10px rgba(255, 235, 59, 0.7)';
-              span.style.transition = 'all 0.3s ease';
-
-              var afterNode = node.splitText(matchIndex);
-              afterNode.nodeValue = afterNode.nodeValue.substring(matchLen);
-
-              span.appendChild(doc.createTextNode(val.substring(matchIndex, matchIndex + matchLen)));
-              node.parentNode.insertBefore(span, afterNode);
-
-              span.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              break;
-            }
-          }
         } catch(e) {}
       }
 
