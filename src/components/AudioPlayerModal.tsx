@@ -40,6 +40,7 @@ interface AudioPlayerModalProps {
   book: Book | null;
   onClose: () => void;
   initialProgressPercentage?: number;
+  onSnippetChange?: (snippet: string) => void;
 }
 
 export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
@@ -47,6 +48,7 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
   book,
   onClose,
   initialProgressPercentage = 0,
+  onSnippetChange,
 }) => {
   const { theme } = useTheme();
 
@@ -155,6 +157,7 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
               setCurrentChunkIndex(index);
               setTotalChunks(total);
               setCurrentTextSnippet(snippet);
+              if (onSnippetChange) onSnippetChange(snippet);
               setIsPlaying(true);
 
               const progressPct = Math.min(100, Math.round(((index + 1) / total) * 100));
@@ -167,6 +170,7 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
               if (!isMounted) return;
               setIsPlaying(false);
               setCurrentTextSnippet('Lectura finalizada.');
+              if (onSnippetChange) onSnippetChange('');
             },
             startChunk,
             book!.id

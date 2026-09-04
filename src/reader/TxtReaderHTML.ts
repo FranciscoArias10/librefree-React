@@ -47,6 +47,15 @@ export function getTxtReaderHTML(
       border-bottom: 1px solid rgba(128,128,128,0.2);
       padding-bottom: 12px;
     }
+    .tts-highlight {
+      background-color: rgba(255, 235, 59, 0.48) !important;
+      color: #111111 !important;
+      border-radius: 4px;
+      padding: 2px 4px;
+      box-shadow: 0 0 10px rgba(255, 235, 59, 0.7);
+      transition: all 0.3s ease-in-out;
+      display: inline;
+    }
   </style>
 </head>
 <body>
@@ -59,6 +68,43 @@ export function getTxtReaderHTML(
     (function() {
       var fullText = ${escapedText};
       document.getElementById('content').innerText = fullText;
+
+      function highlightText(snippet) {
+        var old = document.querySelectorAll('.tts-highlight');
+        old.forEach(function(el) {
+          var parent = el.parentNode;
+          if (parent) {
+            parent.replaceChild(document.createTextNode(el.innerText || el.textContent), el);
+            parent.normalize();
+          }
+        });
+
+        if (!snippet || !snippet.trim()) return;
+        var cleanSnippet = snippet.trim();
+        var contentDiv = document.getElementById('content');
+        if (!contentDiv) return;
+
+        var fullHtml = contentDiv.innerHTML;
+        var escaped = cleanSnippet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var regex = new RegExp('(' + escaped + ')', 'gi');
+
+        if (regex.test(fullHtml)) {
+          contentDiv.innerHTML = fullHtml.replace(regex, '<mark class="tts-highlight">$1</mark>');
+          var markEl = document.querySelector('.tts-highlight');
+          if (markEl) markEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          var shortSnippet = cleanSnippet.substring(0, 25).trim();
+          if (shortSnippet.length > 5) {
+            var shortEscaped = shortSnippet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var shortRegex = new RegExp('(' + shortEscaped + ')', 'gi');
+            if (shortRegex.test(fullHtml)) {
+              contentDiv.innerHTML = fullHtml.replace(shortRegex, '<mark class="tts-highlight">$1</mark>');
+              var markEl = document.querySelector('.tts-highlight');
+              if (markEl) markEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }
+        }
+      }
 
       function sendToRN(type, payload) {
         if (window.ReactNativeWebView) {
@@ -90,7 +136,9 @@ export function getTxtReaderHTML(
       window.addEventListener('message', function(event) {
         try {
           var data = JSON.parse(event.data);
-          if (data.type === 'UPDATE_SETTINGS') {
+          if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
+            highlightText(data.snippet);
+          } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;
             if (s.fontSize) document.body.style.fontSize = s.fontSize + 'px';
             if (s.lineHeight) document.body.style.lineHeight = s.lineHeight;

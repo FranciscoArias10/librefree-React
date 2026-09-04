@@ -280,6 +280,7 @@ export default function ReaderScreen() {
                   setTtsActive(false);
                   setTtsIsPlaying(false);
                   stopSpeech();
+                  webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
                 } else {
                   setTtsActive(true);
                   setTtsIsPlaying(true);
@@ -393,12 +394,15 @@ export default function ReaderScreen() {
         )
       )}
 
-      {/* Audio & Voice Player Modal */}
+      {/* Standalone Full Audio Player Modal */}
       <AudioPlayerModal
-        visible={fullPlayerVisible}
+        visible={ttsActive}
         book={book}
         initialProgressPercentage={progress}
         onClose={() => setFullPlayerVisible(false)}
+        onSnippetChange={(snippet) => {
+          webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet }));
+        }}
       />
 
       {/* Reader Customization Drawer Modal */}

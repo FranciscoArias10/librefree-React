@@ -360,11 +360,71 @@ export function getEpubReaderHTML(
         if (rendition) rendition.prev();
       }
 
+      function highlightEpubText(snippet) {
+        try {
+          var iframe = document.querySelector('iframe');
+          if (!iframe || !iframe.contentDocument) return;
+          var doc = iframe.contentDocument;
+
+          var old = doc.querySelectorAll('.tts-highlight');
+          old.forEach(function(el) {
+            var parent = el.parentNode;
+            if (parent) {
+              parent.replaceChild(doc.createTextNode(el.innerText || el.textContent), el);
+              parent.normalize();
+            }
+          });
+
+          if (!snippet || !snippet.trim()) return;
+          var cleanSnippet = snippet.trim();
+          var body = doc.body;
+          if (!body) return;
+
+          var walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+          var node;
+          while ((node = walker.nextNode())) {
+            var val = node.nodeValue;
+            if (!val || !val.trim()) continue;
+
+            var matchIndex = val.toLowerCase().indexOf(cleanSnippet.toLowerCase());
+            var matchLen = cleanSnippet.length;
+
+            if (matchIndex === -1 && cleanSnippet.length > 20) {
+              var shortSnippet = cleanSnippet.substring(0, 20);
+              matchIndex = val.toLowerCase().indexOf(shortSnippet.toLowerCase());
+              matchLen = shortSnippet.length;
+            }
+
+            if (matchIndex !== -1) {
+              var span = doc.createElement('mark');
+              span.className = 'tts-highlight';
+              span.style.backgroundColor = 'rgba(255, 235, 59, 0.48)';
+              span.style.color = '#111111';
+              span.style.borderRadius = '4px';
+              span.style.padding = '2px 4px';
+              span.style.boxShadow = '0 0 10px rgba(255, 235, 59, 0.7)';
+              span.style.transition = 'all 0.3s ease';
+
+              var afterNode = node.splitText(matchIndex);
+              afterNode.nodeValue = afterNode.nodeValue.substring(matchLen);
+
+              span.appendChild(doc.createTextNode(val.substring(matchIndex, matchIndex + matchLen)));
+              node.parentNode.insertBefore(span, afterNode);
+
+              span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              break;
+            }
+          }
+        } catch(e) {}
+      }
+
       // React Native WebView message handler
       window.addEventListener('message', function(event) {
         try {
           var data = JSON.parse(event.data);
-          if (data.type === 'NEXT_PAGE') {
+          if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
+            highlightEpubText(data.snippet);
+          } else if (data.type === 'NEXT_PAGE') {
             nextPage();
           } else if (data.type === 'PREV_PAGE') {
             prevPage();
