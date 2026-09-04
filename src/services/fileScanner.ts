@@ -168,6 +168,108 @@ export function normalizePath(path: string): string {
   return result;
 }
 
+export async function readUriAsBase64(uri: string): Promise<string> {
+  if (!uri) throw new Error('URI vacía');
+  const normalized = normalizePath(uri);
+
+  // 1. Intentar FileSystem.readAsStringAsync directo
+  try {
+    const data = await FileSystem.readAsStringAsync(normalized, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (data && data.length > 0) return data;
+  } catch (e1) {}
+
+  // 2. Intentar con URI decodificada
+  try {
+    const decoded = decodeURIComponent(normalized);
+    const data = await FileSystem.readAsStringAsync(decoded, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (data && data.length > 0) return data;
+  } catch (e2) {}
+
+  // 3. Fallback con fetch API de React Native (lee URIs de cache y content provider de Android)
+  try {
+    const response = await fetch(normalized);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        if (result && result.includes(',')) {
+          resolve(result.split(',')[1]);
+        } else {
+          resolve(result || '');
+        }
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(blob);
+    });
+  } catch (e3) {
+    try {
+      const decoded = decodeURIComponent(normalized);
+      const response = await fetch(decoded);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          if (result && result.includes(',')) {
+            resolve(result.split(',')[1]);
+          } else {
+            resolve(result || '');
+          }
+        };
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e4) {
+      console.warn('Falló lectura por fetch:', e4);
+    }
+  }
+
+  throw new Error(`No se pudo leer URI como Base64: ${uri}`);
+}
+
+export async function readUriAsText(uri: string): Promise<string> {
+  if (!uri) return '';
+  const normalized = normalizePath(uri);
+
+  // 1. FileSystem UTF8
+  try {
+    const text = await FileSystem.readAsStringAsync(normalized, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    if (text && text.trim().length > 0) return text;
+  } catch (e1) {}
+
+  // 2. Decoded FileSystem UTF8
+  try {
+    const decoded = decodeURIComponent(normalized);
+    const text = await FileSystem.readAsStringAsync(decoded, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    if (text && text.trim().length > 0) return text;
+  } catch (e2) {}
+
+  // 3. Fetch text fallback
+  try {
+    const response = await fetch(normalized);
+    const text = await response.text();
+    if (text && text.trim().length > 0) return text;
+  } catch (e3) {
+    try {
+      const decoded = decodeURIComponent(normalized);
+      const response = await fetch(decoded);
+      const text = await response.text();
+      if (text && text.trim().length > 0) return text;
+    } catch (e4) {}
+  }
+
+  return '';
+}
+
 export async function ensureBooksDirectoryExists(): Promise<string> {
   const docDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
   const decodedDocDir = decodeURIComponent(docDir);
@@ -210,9 +312,7 @@ export async function bulkImportBooks(filesToImport: ScannedFile[]): Promise<Boo
         copiedSuccessfully = true;
       } catch (e1) {
         try {
-          const base64Data = await FileSystem.readAsStringAsync(rawUri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
+          const base64Data = await readUriAsBase64(rawUri);
           await FileSystem.writeAsStringAsync(targetPath, base64Data, {
             encoding: FileSystem.EncodingType.Base64,
           });
@@ -304,9 +404,7 @@ export async function importBookFromDevice(): Promise<Book | null> {
       });
     } catch (readErr) {
       try {
-        const base64Data = await FileSystem.readAsStringAsync(rawUri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+        const base64Data = await readUriAsBase64(rawUri);
         await FileSystem.writeAsStringAsync(targetPath, base64Data, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -368,57 +466,25 @@ export async function readBookContent(filePath: string, format: BookFormat): Pro
 
     const normalizedPath = normalizePath(filePath);
 
-    if (format === 'EPUB') {
+    if (format === 'EPUB' || format === 'PDF') {
       try {
-        const base64Data = await FileSystem.readAsStringAsync(normalizedPath, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+        const base64Data = await readUriAsBase64(normalizedPath);
         return { content: base64Data, isBase64: true };
       } catch (err) {
-        try {
-          const decodedPath = decodeURIComponent(normalizedPath);
-          if (decodedPath !== normalizedPath) {
-            const base64Data = await FileSystem.readAsStringAsync(decodedPath, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-            return { content: base64Data, isBase64: true };
-          }
-        } catch (e2) {}
-
-        console.warn('Aviso: No se pudo leer el archivo EPUB:', normalizedPath);
+        if (format === 'PDF') {
+          return { content: normalizedPath, isBase64: false };
+        }
+        console.warn('Aviso: No se pudo leer el archivo Base64:', normalizedPath);
         return { content: '', isBase64: false };
-      }
-    } else if (format === 'PDF') {
-      try {
-        const base64Data = await FileSystem.readAsStringAsync(normalizedPath, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        return { content: base64Data, isBase64: true };
-      } catch (e) {
-        return { content: normalizedPath, isBase64: false };
       }
     } else {
       try {
-        const textContent = await FileSystem.readAsStringAsync(normalizedPath, {
-          encoding: FileSystem.EncodingType.UTF8,
-        });
+        const textContent = await readUriAsText(normalizedPath);
         if (!textContent || textContent.trim().length === 0) {
           return { content: 'El archivo de texto no contiene caracteres legibles.', isBase64: false };
         }
         return { content: textContent, isBase64: false };
       } catch (err) {
-        try {
-          const decodedPath = decodeURIComponent(normalizedPath);
-          if (decodedPath !== normalizedPath) {
-            const textContent = await FileSystem.readAsStringAsync(decodedPath, {
-              encoding: FileSystem.EncodingType.UTF8,
-            });
-            if (textContent && textContent.trim().length > 0) {
-              return { content: textContent, isBase64: false };
-            }
-          }
-        } catch (e2) {}
-
         console.warn('Aviso: No se pudo cargar el contenido del archivo local:', normalizedPath);
         return { content: 'Error: No se pudo cargar el contenido del archivo local.', isBase64: false };
       }
@@ -489,31 +555,14 @@ export async function extractTextFromBook(book: Book): Promise<string> {
 
     if (book.format === 'TXT') {
       try {
-        const txt = await FileSystem.readAsStringAsync(normalizedPath, { encoding: FileSystem.EncodingType.UTF8 });
+        const txt = await readUriAsText(normalizedPath);
         if (txt && txt.trim().length > 0) return txt;
-      } catch (e) {
-        try {
-          const decodedPath = decodeURIComponent(normalizedPath);
-          const txt = await FileSystem.readAsStringAsync(decodedPath, { encoding: FileSystem.EncodingType.UTF8 });
-          if (txt && txt.trim().length > 0) return txt;
-        } catch (e2) {}
-      }
+      } catch (e) {}
     }
 
     if (book.format === 'EPUB') {
       try {
-        let base64Data = '';
-        try {
-          base64Data = await FileSystem.readAsStringAsync(normalizedPath, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-        } catch (e1) {
-          const decodedPath = decodeURIComponent(normalizedPath);
-          base64Data = await FileSystem.readAsStringAsync(decodedPath, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-        }
-
+        const base64Data = await readUriAsBase64(normalizedPath);
         const extractedEpubText = await extractEpubTextNative(base64Data);
         if (extractedEpubText && extractedEpubText.trim().length > 100) {
           await saveExtractedBookText(book.id, extractedEpubText);
