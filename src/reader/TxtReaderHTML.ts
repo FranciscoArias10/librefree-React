@@ -70,7 +70,11 @@ export function getTxtReaderHTML(
       document.getElementById('content').innerText = fullText;
 
       function escapeRegExp(str) {
-        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\\\$&');
+        var chars = ['\\\\', '.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']', '-'];
+        for (var i = 0; i < chars.length; i++) {
+          str = str.split(chars[i]).join('\\\\' + chars[i]);
+        }
+        return str;
       }
 
       function highlightText(snippet) {
