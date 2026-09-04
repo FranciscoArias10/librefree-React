@@ -439,17 +439,21 @@ export function getEpubReaderHTML(
           } else if (data.type === 'PREV_PAGE') {
             prevPage();
           } else if (data.type === 'SEEK_PERCENT') {
-            if (rendition) {
+            if (rendition && book) {
               var pct = data.payload.percent;
               if (pct <= 0) {
-                rendition.display(0);
-              } else if (pct >= 100) {
-                if (book && book.spine && book.spine.items && book.spine.items.length > 0) {
-                  rendition.display(book.spine.items.length - 1);
+                if (book.spine && book.spine.items && book.spine.items.length > 0) {
+                  rendition.display(book.spine.items[0].href);
                 } else {
-                  rendition.display(0);
+                  rendition.display();
                 }
-              } else if (book && book.locations && book.locations.total > 0) {
+              } else if (pct >= 100) {
+                if (book.spine && book.spine.items && book.spine.items.length > 0) {
+                  rendition.display(book.spine.items[book.spine.items.length - 1].href);
+                } else {
+                  rendition.display();
+                }
+              } else if (book.locations && book.locations.total > 0) {
                 var p = pct / 100;
                 var cfi = book.locations.cfiFromPercentage(p);
                 if (cfi) {
@@ -457,13 +461,13 @@ export function getEpubReaderHTML(
                 } else if (book.spine && book.spine.items && book.spine.items.length > 0) {
                   var idx = Math.floor(p * book.spine.items.length);
                   idx = Math.max(0, Math.min(book.spine.items.length - 1, idx));
-                  rendition.display(idx);
+                  rendition.display(book.spine.items[idx].href);
                 }
-              } else if (book && book.spine && book.spine.items && book.spine.items.length > 0) {
+              } else if (book.spine && book.spine.items && book.spine.items.length > 0) {
                 var p = pct / 100;
                 var idx = Math.floor(p * book.spine.items.length);
                 idx = Math.max(0, Math.min(book.spine.items.length - 1, idx));
-                rendition.display(idx);
+                rendition.display(book.spine.items[idx].href);
               }
             }
           } else if (data.type === 'UPDATE_SETTINGS') {
