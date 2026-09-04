@@ -500,7 +500,6 @@ export async function readBookContent(filePath: string, format: BookFormat): Pro
         if (format === 'PDF') {
           return { content: normalizedPath, isBase64: false };
         }
-        console.warn('Aviso: No se pudo leer el archivo Base64:', normalizedPath);
         return { content: '', isBase64: false };
       }
     } else {
@@ -511,12 +510,10 @@ export async function readBookContent(filePath: string, format: BookFormat): Pro
         }
         return { content: textContent, isBase64: false };
       } catch (err) {
-        console.warn('Aviso: No se pudo cargar el contenido del archivo local:', normalizedPath);
         return { content: 'Error: No se pudo cargar el contenido del archivo local.', isBase64: false };
       }
     }
   } catch (error) {
-    console.warn('Aviso leyendo archivo de libro:', error);
     return { content: 'Error: No se pudo cargar el contenido del archivo local.', isBase64: false };
   }
 }

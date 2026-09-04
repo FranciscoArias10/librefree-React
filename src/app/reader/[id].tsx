@@ -57,33 +57,50 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderGrant: (evt) => {
         setIsDragging(true);
+        const touchX = evt.nativeEvent.pageX;
         if (trackRef.current) {
           trackRef.current.measureInWindow((x, y, w) => {
             if (w > 0) {
               setTrackPageX(x);
               setTrackWidth(w);
-              const relX = Math.max(0, Math.min(w, evt.nativeEvent.pageX - x));
+              const relX = Math.max(0, Math.min(w, touchX - x));
               const pct = Math.round((relX / w) * 100);
               setDragPercent(pct);
+              onSeek(pct);
             }
           });
         }
       },
       onPanResponderMove: (evt) => {
+        const touchX = evt.nativeEvent.pageX;
         if (trackWidth > 0) {
-          const relX = Math.max(0, Math.min(trackWidth, evt.nativeEvent.pageX - trackPageX));
+          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
           const pct = Math.round((relX / trackWidth) * 100);
           setDragPercent(pct);
           onSeek(pct);
+        } else if (trackRef.current) {
+          trackRef.current.measureInWindow((x, y, w) => {
+            if (w > 0) {
+              setTrackPageX(x);
+              setTrackWidth(w);
+              const relX = Math.max(0, Math.min(w, touchX - x));
+              const pct = Math.round((relX / w) * 100);
+              setDragPercent(pct);
+              onSeek(pct);
+            }
+          });
         }
       },
       onPanResponderRelease: (evt) => {
         setIsDragging(false);
+        const touchX = evt.nativeEvent.pageX;
         if (trackWidth > 0) {
-          const relX = Math.max(0, Math.min(trackWidth, evt.nativeEvent.pageX - trackPageX));
+          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
           const pct = Math.round((relX / trackWidth) * 100);
           setDragPercent(pct);
           onSeek(pct);
