@@ -12,6 +12,15 @@ LogBox.ignoreLogs([
   "ExponentAV",
 ]);
 
+const origConsoleError = console.error;
+console.error = (...args: any[]) => {
+  const msg = typeof args[0] === 'string' ? args[0] : '';
+  if (msg.includes("Can't perform a React state update") || msg.includes("hasn't mounted yet")) {
+    return;
+  }
+  origConsoleError(...args);
+};
+
 function RootLayoutInner() {
   const { theme } = useTheme();
   return (
