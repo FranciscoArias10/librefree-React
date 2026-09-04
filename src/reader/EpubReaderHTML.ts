@@ -428,9 +428,10 @@ export function getEpubReaderHTML(
       }
 
       // React Native WebView message handler
-      window.addEventListener('message', function(event) {
+      function handleMessage(event: any) {
         try {
-          var data = JSON.parse(event.data);
+          var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+          if (!data) return;
           if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
             highlightEpubText(data.snippet);
           } else if (data.type === 'NEXT_PAGE') {
@@ -445,16 +446,24 @@ export function getEpubReaderHTML(
               } else if (pct >= 100) {
                 if (book && book.spine && book.spine.items && book.spine.items.length > 0) {
                   rendition.display(book.spine.items.length - 1);
+                } else {
+                  rendition.display(0);
                 }
               } else if (book && book.locations && book.locations.total > 0) {
                 var p = pct / 100;
                 var cfi = book.locations.cfiFromPercentage(p);
                 if (cfi) {
                   rendition.display(cfi);
-                } else if (book.spine && book.spine.items) {
+                } else if (book.spine && book.spine.items && book.spine.items.length > 0) {
                   var idx = Math.floor(p * book.spine.items.length);
+                  idx = Math.max(0, Math.min(book.spine.items.length - 1, idx));
                   rendition.display(idx);
                 }
+              } else if (book && book.spine && book.spine.items && book.spine.items.length > 0) {
+                var p = pct / 100;
+                var idx = Math.floor(p * book.spine.items.length);
+                idx = Math.max(0, Math.min(book.spine.items.length - 1, idx));
+                rendition.display(idx);
               }
             }
           } else if (data.type === 'UPDATE_SETTINGS') {
@@ -470,7 +479,10 @@ export function getEpubReaderHTML(
             }
           }
         } catch(e) {}
-      });
+      }
+
+      window.addEventListener('message', handleMessage);
+      document.addEventListener('message', handleMessage);
 
       document.addEventListener('DOMContentLoaded', initEpub);
     })();

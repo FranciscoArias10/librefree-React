@@ -147,9 +147,10 @@ export function getTxtReaderHTML(
         }
       });
 
-      window.addEventListener('message', function(event) {
+      function handleMessage(event: any) {
         try {
-          var data = JSON.parse(event.data);
+          var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+          if (!data) return;
           if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
             highlightText(data.snippet);
           } else if (data.type === 'SEEK_PERCENT') {
@@ -179,7 +180,10 @@ export function getTxtReaderHTML(
             }
           }
         } catch(e) {}
-      });
+      }
+
+      window.addEventListener('message', handleMessage);
+      document.addEventListener('message', handleMessage);
     })();
   </script>
 </body>

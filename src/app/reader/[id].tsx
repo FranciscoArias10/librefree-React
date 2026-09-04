@@ -47,6 +47,7 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
   const [trackPageX, setTrackPageX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragPercent, setDragPercent] = useState(progress);
+  const lastSeekTimeRef = useRef(0);
 
   useEffect(() => {
     if (!isDragging) {
@@ -54,9 +55,28 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
     }
   }, [progress, isDragging]);
 
-  const currentPercent = isDragging ? dragPercent : progress;
-  const total = totalPages && totalPages > 0 ? totalPages : 350;
-  const estimatedPage = currentPercent <= 0 ? 1 : (currentPercent >= 100 ? total : Math.max(1, Math.min(total, Math.round((currentPercent / 100) * total))));
+  const calcPercent = (evt: any) => {
+    const { locationX, pageX } = evt.nativeEvent;
+    let pct = 0;
+    if (trackWidth > 0) {
+      if (trackPageX > 0) {
+        const relX = Math.max(0, Math.min(trackWidth, pageX - trackPageX));
+        pct = Math.round((relX / trackWidth) * 100);
+      } else {
+        const relX = Math.max(0, Math.min(trackWidth, locationX));
+        pct = Math.round((relX / trackWidth) * 100);
+      }
+    }
+    return Math.max(0, Math.min(100, pct));
+  };
+
+  const emitThrottledSeek = (pct: number, force: boolean = false) => {
+    const now = Date.now();
+    if (force || now - lastSeekTimeRef.current > 70) {
+      lastSeekTimeRef.current = now;
+      onSeek(pct);
+    }
+  };
 
   const panResponder = useRef(
     PanResponder.create({
@@ -66,52 +86,40 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
       onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderGrant: (evt) => {
         setIsDragging(true);
-        const touchX = evt.nativeEvent.pageX;
         if (trackRef.current) {
           trackRef.current.measureInWindow((x, y, w) => {
             if (w > 0) {
               setTrackPageX(x);
               setTrackWidth(w);
-              const relX = Math.max(0, Math.min(w, touchX - x));
-              const pct = Math.round((relX / w) * 100);
-              setDragPercent(pct);
-              onSeek(pct);
             }
           });
         }
+        const pct = calcPercent(evt);
+        setDragPercent(pct);
+        emitThrottledSeek(pct, true);
       },
       onPanResponderMove: (evt) => {
-        const touchX = evt.nativeEvent.pageX;
-        if (trackWidth > 0) {
-          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
-          const pct = Math.round((relX / trackWidth) * 100);
-          setDragPercent(pct);
-          onSeek(pct);
-        } else if (trackRef.current) {
-          trackRef.current.measureInWindow((x, y, w) => {
-            if (w > 0) {
-              setTrackPageX(x);
-              setTrackWidth(w);
-              const relX = Math.max(0, Math.min(w, touchX - x));
-              const pct = Math.round((relX / w) * 100);
-              setDragPercent(pct);
-              onSeek(pct);
-            }
-          });
-        }
+        const pct = calcPercent(evt);
+        setDragPercent(pct);
+        emitThrottledSeek(pct, false);
       },
       onPanResponderRelease: (evt) => {
         setIsDragging(false);
-        const touchX = evt.nativeEvent.pageX;
-        if (trackWidth > 0) {
-          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
-          const pct = Math.round((relX / trackWidth) * 100);
-          setDragPercent(pct);
-          onSeek(pct);
-        }
+        const pct = calcPercent(evt);
+        setDragPercent(pct);
+        emitThrottledSeek(pct, true);
       },
     })
   ).current;
+
+  const currentPercent = isDragging ? dragPercent : progress;
+  const total = totalPages && totalPages > 0 ? totalPages : 350;
+  const estimatedPage =
+    currentPercent <= 0
+      ? 1
+      : currentPercent >= 100
+      ? total
+      : Math.max(1, Math.min(total, Math.round((currentPercent / 100) * total)));
 
   const isDark = themeMode === 'dark' || themeMode === 'oled';
 
@@ -119,12 +127,12 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
     <View
       ref={trackRef}
       style={styles.scrubberWrapper}
-      onLayout={() => {
-        trackRef.current?.measureInWindow((x, y, w) => {
-          if (w > 0) {
-            setTrackPageX(x);
-            setTrackWidth(w);
-          }
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        if (w > 0) setTrackWidth(w);
+        trackRef.current?.measureInWindow((x, y, width) => {
+          if (x > 0) setTrackPageX(x);
+          if (width > 0) setTrackWidth(width);
         });
       }}
       {...panResponder.panHandlers}
@@ -132,7 +140,7 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
       <View
         style={[
           styles.scrubberTrack,
-          { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.07)' },
+          { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' },
         ]}
       >
         <View

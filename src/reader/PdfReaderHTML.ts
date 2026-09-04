@@ -213,71 +213,85 @@ export function getPdfReaderHTML(
         return offCanvas;
       }
 
-      async function renderPage(pageNum) {
+      var pendingPageToRender: number | null = null;
+
+      async function renderPage(pageNum: number) {
         if (!pdfDoc || pageNum < 1 || pageNum > totalPages) return;
+        if (isRendering) {
+          pendingPageToRender = pageNum;
+          return;
+        }
         isRendering = true;
         currentPage = pageNum;
         resetZoom();
 
-        var mainCanvas = document.getElementById('pdf-canvas');
-        var mainContext = mainCanvas.getContext('2d');
+        try {
+          var mainCanvas = document.getElementById('pdf-canvas') as HTMLCanvasElement;
+          var mainContext = mainCanvas.getContext('2d')!;
 
-        if (pageCanvasCache[pageNum]) {
-          var cached = pageCanvasCache[pageNum];
-          mainCanvas.width = cached.width;
-          mainCanvas.height = cached.height;
-          mainCanvas.style.width = cached.style.width;
-          mainCanvas.style.height = cached.style.height;
-
-          mainContext.imageSmoothingEnabled = true;
-          mainContext.imageSmoothingQuality = 'high';
-          mainContext.drawImage(cached, 0, 0);
-          document.getElementById('loading').style.display = 'none';
-          isRendering = false;
-        } else {
-          document.getElementById('loading').style.display = 'block';
-          var rendered = await renderPageToCanvas(pageNum);
-          if (rendered) {
-            mainCanvas.width = rendered.width;
-            mainCanvas.height = rendered.height;
-            mainCanvas.style.width = rendered.style.width;
-            mainCanvas.style.height = rendered.style.height;
+          if (pageCanvasCache[pageNum]) {
+            var cached = pageCanvasCache[pageNum];
+            mainCanvas.width = cached.width;
+            mainCanvas.height = cached.height;
+            mainCanvas.style.width = cached.style.width;
+            mainCanvas.style.height = cached.style.height;
 
             mainContext.imageSmoothingEnabled = true;
             mainContext.imageSmoothingQuality = 'high';
-            mainContext.drawImage(rendered, 0, 0);
+            mainContext.drawImage(cached, 0, 0);
+            document.getElementById('loading')!.style.display = 'none';
+          } else {
+            document.getElementById('loading')!.style.display = 'block';
+            var rendered = await renderPageToCanvas(pageNum);
+            if (rendered) {
+              mainCanvas.width = rendered.width;
+              mainCanvas.height = rendered.height;
+              mainCanvas.style.width = rendered.style.width;
+              mainCanvas.style.height = rendered.style.height;
+
+              mainContext.imageSmoothingEnabled = true;
+              mainContext.imageSmoothingQuality = 'high';
+              mainContext.drawImage(rendered, 0, 0);
+            }
+            document.getElementById('loading')!.style.display = 'none';
           }
-          document.getElementById('loading').style.display = 'none';
-          isRendering = false;
-        }
 
-        // Extract readable text of current page for TTS
-        try {
-          var currPageObj = await pdfDoc.getPage(pageNum);
-          var textContent = await currPageObj.getTextContent();
-          var pageText = textContent.items.map(function(item) { return item.str; }).join(' ');
-          sendToRN("PAGE_TEXT_EXTRACTED", { page: pageNum, text: pageText });
-        } catch(e) {}
-
-        var progress = Math.min(100, Math.max(0, Math.round((pageNum / totalPages) * 100)));
-        sendToRN("PROGRESS_UPDATE", {
-          progress: progress,
-          page: pageNum,
-          chapter: "Página " + pageNum + " de " + totalPages
-        });
-
-        if (pageNum === 1) {
+          // Extract readable text of current page for TTS
           try {
-            var coverDataUrl = mainCanvas.toDataURL('image/jpeg', 0.75);
-            sendToRN("COVER_GENERATED", { coverPath: coverDataUrl });
+            var currPageObj = await pdfDoc.getPage(pageNum);
+            var textContent = await currPageObj.getTextContent();
+            var pageText = textContent.items.map(function(item: any) { return item.str; }).join(' ');
+            sendToRN("PAGE_TEXT_EXTRACTED", { page: pageNum, text: pageText });
           } catch(e) {}
-        }
 
-        // Pre-render next page in background
-        if (pageNum < totalPages && !pageCanvasCache[pageNum + 1]) {
-          setTimeout(function() {
-            renderPageToCanvas(pageNum + 1);
-          }, 50);
+          var progress = Math.min(100, Math.max(0, Math.round((pageNum / totalPages) * 100)));
+          sendToRN("PROGRESS_UPDATE", {
+            progress: progress,
+            page: pageNum,
+            chapter: "Página " + pageNum + " de " + totalPages
+          });
+
+          if (pageNum === 1) {
+            try {
+              var coverDataUrl = mainCanvas.toDataURL('image/jpeg', 0.75);
+              sendToRN("COVER_GENERATED", { coverPath: coverDataUrl });
+            } catch(e) {}
+          }
+
+          // Pre-render next page in background
+          if (pageNum < totalPages && !pageCanvasCache[pageNum + 1]) {
+            setTimeout(function() {
+              renderPageToCanvas(pageNum + 1);
+            }, 50);
+          }
+        } catch(err) {
+        } finally {
+          isRendering = false;
+          if (pendingPageToRender !== null && pendingPageToRender !== pageNum) {
+            var nextP = pendingPageToRender;
+            pendingPageToRender = null;
+            renderPage(nextP);
+          }
         }
       }
 
@@ -436,9 +450,10 @@ export function getPdfReaderHTML(
         }
       }, false);
 
-      window.addEventListener('message', function(event) {
+      function handleMessage(event: any) {
         try {
-          var data = JSON.parse(event.data);
+          var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+          if (!data) return;
           if (data.type === 'NEXT_PAGE') {
             nextPage();
           } else if (data.type === 'PREV_PAGE') {
@@ -460,7 +475,10 @@ export function getPdfReaderHTML(
             }
           }
         } catch(e) {}
-      });
+      }
+
+      window.addEventListener('message', handleMessage);
+      document.addEventListener('message', handleMessage);
 
       document.addEventListener('DOMContentLoaded', loadPDF);
     })();
