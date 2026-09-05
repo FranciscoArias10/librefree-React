@@ -92,6 +92,44 @@ export async function autoScanDeviceDirectories(
   return foundFiles;
 }
 
+export async function copyFileToPermanentStorage(fromUri: string, targetPath: string): Promise<boolean> {
+  if (!fromUri || !targetPath) return false;
+  const rawUri = normalizePath(fromUri);
+
+  // 1. Intentar FileSystem.copyAsync
+  try {
+    await FileSystem.copyAsync({ from: rawUri, to: targetPath });
+    const stats = await FileSystem.getInfoAsync(targetPath);
+    if (stats.exists && stats.size && stats.size > 0) return true;
+  } catch (e1) {}
+
+  // 2. Intentar lectura en Base64 y escritura permanente
+  try {
+    const base64Data = await readUriAsBase64(rawUri);
+    if (base64Data && base64Data.length > 0) {
+      await FileSystem.writeAsStringAsync(targetPath, base64Data, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const stats = await FileSystem.getInfoAsync(targetPath);
+      if (stats.exists && stats.size && stats.size > 0) return true;
+    }
+  } catch (e2) {}
+
+  // 3. Fallback con lectura de texto UTF-8
+  try {
+    const textData = await readUriAsText(rawUri);
+    if (textData && textData.trim().length > 0) {
+      await FileSystem.writeAsStringAsync(targetPath, textData, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      const stats = await FileSystem.getInfoAsync(targetPath);
+      if (stats.exists && stats.size && stats.size > 0) return true;
+    }
+  } catch (e3) {}
+
+  return false;
+}
+
 export async function pickMultipleBooksByFormat(
   formatFilter: 'ALL' | 'EPUB' | 'PDF' | 'TXT' | 'AUDIO'
 ): Promise<ScannedFile[]> {
@@ -107,7 +145,7 @@ export async function pickMultipleBooksByFormat(
     const result = await DocumentPicker.getDocumentAsync({
       type: mimeTypes,
       multiple: true,
-      copyToCacheDirectory: false,
+      copyToCacheDirectory: true,
     });
 
     if (result.canceled || !result.assets || result.assets.length === 0) {
@@ -269,34 +307,10 @@ export async function bulkImportBooks(filesToImport: ScannedFile[]): Promise<Boo
       const targetPath = booksDir + cleanFileName;
       const rawUri = normalizePath(item.uri);
 
-      let copiedSuccessfully = false;
-      try {
-        await FileSystem.copyAsync({
-          from: rawUri,
-          to: targetPath,
-        });
-        copiedSuccessfully = true;
-      } catch (e1) {
-        try {
-          const base64Data = await readUriAsBase64(rawUri);
-          await FileSystem.writeAsStringAsync(targetPath, base64Data, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          copiedSuccessfully = true;
-        } catch (e2) {
-          console.warn('No se pudo copiar ni leer por Base64:', e2);
-        }
-      }
-
-      let fileStats = await FileSystem.getInfoAsync(targetPath);
-      let finalFilePath = targetPath;
-      let finalSize = item.size || 0;
-
-      if (fileStats.exists && fileStats.size) {
-        finalSize = fileStats.size;
-      } else {
-        finalFilePath = rawUri;
-      }
+      const copied = await copyFileToPermanentStorage(rawUri, targetPath);
+      let finalFilePath = copied ? targetPath : rawUri;
+      let fileStats = await FileSystem.getInfoAsync(finalFilePath);
+      let finalSize = (fileStats.exists && fileStats.size) ? fileStats.size : (item.size || 0);
 
       const titleWithoutExt = item.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
       let title = titleWithoutExt;
@@ -342,7 +356,7 @@ export async function importBookFromDevice(): Promise<Book | null> {
         'text/html',
         '*/*'
       ],
-      copyToCacheDirectory: false,
+      copyToCacheDirectory: true,
     });
 
     if (result.canceled || !result.assets || result.assets.length === 0) {
@@ -363,31 +377,10 @@ export async function importBookFromDevice(): Promise<Book | null> {
     const targetPath = booksDir + cleanFileName;
     const rawUri = normalizePath(asset.uri);
 
-    try {
-      await FileSystem.copyAsync({
-        from: rawUri,
-        to: targetPath,
-      });
-    } catch (readErr) {
-      try {
-        const base64Data = await readUriAsBase64(rawUri);
-        await FileSystem.writeAsStringAsync(targetPath, base64Data, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-      } catch (e2) {
-        console.warn('No se pudo copiar ni leer por Base64:', e2);
-      }
-    }
-
-    let fileStats = await FileSystem.getInfoAsync(targetPath);
-    let finalFilePath = targetPath;
-    let finalSize = asset.size || 0;
-
-    if (fileStats.exists && fileStats.size) {
-      finalSize = fileStats.size;
-    } else {
-      finalFilePath = rawUri;
-    }
+    const copied = await copyFileToPermanentStorage(rawUri, targetPath);
+    let finalFilePath = copied ? targetPath : rawUri;
+    let fileStats = await FileSystem.getInfoAsync(finalFilePath);
+    let finalSize = (fileStats.exists && fileStats.size) ? fileStats.size : (asset.size || 0);
 
     const titleWithoutExt = fileName.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
     let title = titleWithoutExt;
@@ -435,13 +428,12 @@ export async function readBookContent(filePath: string, format: BookFormat): Pro
     if (format === 'EPUB' || format === 'PDF') {
       try {
         const base64Data = await readUriAsBase64(normalizedPath);
-        return { content: base64Data, isBase64: true };
-      } catch (err) {
-        if (format === 'PDF') {
-          return { content: normalizedPath, isBase64: false };
+        if (base64Data && base64Data.length > 50) {
+          return { content: base64Data, isBase64: true };
         }
-        return { content: '', isBase64: false };
-      }
+      } catch (err) {}
+
+      return { content: '', isBase64: false };
     } else {
       try {
         const textContent = await readUriAsText(normalizedPath);
