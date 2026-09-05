@@ -47,6 +47,7 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
   const [trackPageX, setTrackPageX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragPercent, setDragPercent] = useState(progress);
+  const initialPctRef = useRef(progress);
   const lastSeekTimeRef = useRef(0);
 
   useEffect(() => {
@@ -55,24 +56,9 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
     }
   }, [progress, isDragging]);
 
-  const calcPercent = (evt: any) => {
-    const { locationX, pageX } = evt.nativeEvent;
-    let pct = 0;
-    if (trackWidth > 0) {
-      if (trackPageX > 0) {
-        const relX = Math.max(0, Math.min(trackWidth, pageX - trackPageX));
-        pct = Math.round((relX / trackWidth) * 100);
-      } else {
-        const relX = Math.max(0, Math.min(trackWidth, locationX));
-        pct = Math.round((relX / trackWidth) * 100);
-      }
-    }
-    return Math.max(0, Math.min(100, pct));
-  };
-
   const emitThrottledSeek = (pct: number, force: boolean = false) => {
     const now = Date.now();
-    if (force || now - lastSeekTimeRef.current > 70) {
+    if (force || now - lastSeekTimeRef.current > 60) {
       lastSeekTimeRef.current = now;
       onSeek(pct);
     }
@@ -84,28 +70,56 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
       onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderGrant: (evt) => {
+      onPanResponderGrant: (evt, gestureState) => {
         setIsDragging(true);
+        initialPctRef.current = dragPercent;
+
+        const touchX = evt.nativeEvent.pageX;
+        if (trackWidth > 0 && trackPageX > 0) {
+          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
+          const tapPct = Math.max(0, Math.min(100, Math.round((relX / trackWidth) * 100)));
+          initialPctRef.current = tapPct;
+          setDragPercent(tapPct);
+          emitThrottledSeek(tapPct, true);
+        } else {
+          emitThrottledSeek(dragPercent, true);
+        }
+
         if (trackRef.current) {
           trackRef.current.measureInWindow((x, y, w) => {
-            if (w > 0) {
-              setTrackPageX(x);
-              setTrackWidth(w);
-            }
+            if (x > 0) setTrackPageX(x);
+            if (w > 0) setTrackWidth(w);
           });
         }
-        const pct = calcPercent(evt);
-        setDragPercent(pct);
-        emitThrottledSeek(pct, true);
       },
-      onPanResponderMove: (evt) => {
-        const pct = calcPercent(evt);
+      onPanResponderMove: (evt, gestureState) => {
+        const touchX = evt.nativeEvent.pageX;
+        let pct = dragPercent;
+
+        if (trackWidth > 0 && trackPageX > 0) {
+          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
+          pct = Math.max(0, Math.min(100, Math.round((relX / trackWidth) * 100)));
+        } else if (trackWidth > 0) {
+          const deltaPct = (gestureState.dx / trackWidth) * 100;
+          pct = Math.max(0, Math.min(100, Math.round(initialPctRef.current + deltaPct)));
+        }
+
         setDragPercent(pct);
         emitThrottledSeek(pct, false);
       },
-      onPanResponderRelease: (evt) => {
+      onPanResponderRelease: (evt, gestureState) => {
         setIsDragging(false);
-        const pct = calcPercent(evt);
+        const touchX = evt.nativeEvent.pageX;
+        let pct = dragPercent;
+
+        if (trackWidth > 0 && trackPageX > 0) {
+          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
+          pct = Math.max(0, Math.min(100, Math.round((relX / trackWidth) * 100)));
+        } else if (trackWidth > 0) {
+          const deltaPct = (gestureState.dx / trackWidth) * 100;
+          pct = Math.max(0, Math.min(100, Math.round(initialPctRef.current + deltaPct)));
+        }
+
         setDragPercent(pct);
         emitThrottledSeek(pct, true);
       },
@@ -227,7 +241,7 @@ export default function ReaderScreen() {
             setPageLabel(`Página ${fakePage}`);
           }
 
-          const data = await readBookContent(b.filePath, b.format);
+          const data = await readBookContent(b.filePath, b.format, b.id);
           setBookData(data);
         }
       } catch (err) {

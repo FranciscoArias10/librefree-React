@@ -134,6 +134,12 @@ export async function updateBookProgress(id: string, progressPercentage: number,
   );
 }
 
+export async function updateBookFilePath(id: string, newFilePath: string): Promise<void> {
+  if (!id || !newFilePath) return;
+  const db = await getDB();
+  await db.runAsync(`UPDATE books SET filePath = ? WHERE id = ?;`, [newFilePath, id]);
+}
+
 export async function saveBookCover(id: string, coverPath: string): Promise<void> {
   const db = await getDB();
   await db.runAsync(`UPDATE books SET coverPath = ? WHERE id = ?;`, [coverPath, id]);

@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import JSZip from 'jszip';
-import { addBook, getExtractedBookText, saveExtractedBookText } from './database';
+import { addBook, getExtractedBookText, saveExtractedBookText, updateBookFilePath } from './database';
 import { Book, BookFormat } from '../types/book';
 
 export interface ScannedFile {
@@ -410,7 +410,55 @@ export async function importBookFromDevice(): Promise<Book | null> {
   }
 }
 
-export async function readBookContent(filePath: string, format: BookFormat): Promise<{ content: string; isBase64: boolean }> {
+export async function resolveAndHealBookPath(filePath: string, bookId?: string): Promise<string> {
+  if (!filePath) return '';
+  const normalized = normalizePath(filePath);
+
+  // 1. Probar ruta directa
+  try {
+    const info = await FileSystem.getInfoAsync(normalized);
+    if (info.exists && info.size && info.size > 0) {
+      return normalized;
+    }
+  } catch (e) {}
+
+  // 2. Extraer el nombre base del archivo y buscar en booksDir permanente
+  const fileName = filePath.split('/').pop() || '';
+  if (fileName) {
+    try {
+      const booksDir = await ensureBooksDirectoryExists();
+      const candidate = booksDir + fileName;
+      const candidateInfo = await FileSystem.getInfoAsync(candidate);
+      if (candidateInfo.exists && candidateInfo.size && candidateInfo.size > 0) {
+        if (bookId) {
+          try { await updateBookFilePath(bookId, candidate); } catch (dbErr) {}
+        }
+        return candidate;
+      }
+    } catch (e2) {}
+  }
+
+  // 3. Probar corregir distorsiones de %40 vs @ en rutas de Expo
+  try {
+    let altPath = normalized;
+    if (altPath.includes('@francisco_a')) {
+      altPath = altPath.replace(/@francisco_a/g, '%40francisco_a').replace(/\/Librefree-React/g, '%2FLibrefree-React');
+    } else if (altPath.includes('%40francisco_a')) {
+      altPath = altPath.replace(/%40francisco_a/g, '@francisco_a').replace(/%2FLibrefree-React/g, '/Librefree-React');
+    }
+    const altInfo = await FileSystem.getInfoAsync(altPath);
+    if (altInfo.exists && altInfo.size && altInfo.size > 0) {
+      if (bookId) {
+        try { await updateBookFilePath(bookId, altPath); } catch (dbErr) {}
+      }
+      return altPath;
+    }
+  } catch (e3) {}
+
+  return normalized;
+}
+
+export async function readBookContent(filePath: string, format: BookFormat, bookId?: string): Promise<{ content: string; isBase64: boolean }> {
   try {
     if (!filePath) {
       return { content: '', isBase64: false };
@@ -423,11 +471,11 @@ export async function readBookContent(filePath: string, format: BookFormat): Pro
       return { content: SAMPLE_PRINCIPITO_TEXT, isBase64: false };
     }
 
-    const normalizedPath = normalizePath(filePath);
+    const healedPath = await resolveAndHealBookPath(filePath, bookId);
 
     if (format === 'EPUB' || format === 'PDF') {
       try {
-        const base64Data = await readUriAsBase64(normalizedPath);
+        const base64Data = await readUriAsBase64(healedPath);
         if (base64Data && base64Data.length > 50) {
           return { content: base64Data, isBase64: true };
         }
@@ -436,7 +484,7 @@ export async function readBookContent(filePath: string, format: BookFormat): Pro
       return { content: '', isBase64: false };
     } else {
       try {
-        const textContent = await readUriAsText(normalizedPath);
+        const textContent = await readUriAsText(healedPath);
         if (!textContent || textContent.trim().length === 0) {
           return { content: 'El archivo de texto no contiene caracteres legibles.', isBase64: false };
         }
