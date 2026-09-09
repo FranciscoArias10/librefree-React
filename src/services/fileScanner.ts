@@ -235,7 +235,7 @@ export async function readUriAsBase64(uri: string): Promise<string> {
   if (!uri) throw new Error('URI vacía');
   const normalized = normalizePath(uri);
 
-  // 1. FileSystem.readAsStringAsync directo
+  // 1. FileSystem.readAsStringAsync directo con ruta normalizada
   try {
     const data = await FileSystem.readAsStringAsync(normalized, {
       encoding: FileSystem.EncodingType.Base64,
@@ -243,7 +243,15 @@ export async function readUriAsBase64(uri: string): Promise<string> {
     if (data && data.length > 0) return data;
   } catch (e1) {}
 
-  // 2. Stripped file://
+  // 2. FileSystem directo con URI original sin modificar
+  try {
+    const data = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (data && data.length > 0) return data;
+  } catch (e1b) {}
+
+  // 3. Stripped file://
   try {
     const raw = normalized.replace(/^file:\/\//, '');
     const data = await FileSystem.readAsStringAsync(raw, {
@@ -252,11 +260,17 @@ export async function readUriAsBase64(uri: string): Promise<string> {
     if (data && data.length > 0) return data;
   } catch (e2) {}
 
-  // 3. Fallback con XMLHttpRequest (evita la advertencia de Response.blob() de React Native)
+  // 4. Fallback con XMLHttpRequest (soporta URIs content:// y file://)
   try {
     const data = await readUriWithXHR(normalized);
     if (data && data.length > 0) return data;
   } catch (e3) {}
+
+  // 5. Fallback con XMLHttpRequest en URI original
+  try {
+    const data = await readUriWithXHR(uri);
+    if (data && data.length > 0) return data;
+  } catch (e4) {}
 
   throw new Error(`No se pudo leer URI como Base64: ${uri}`);
 }
@@ -480,6 +494,15 @@ export async function readBookContent(filePath: string, format: BookFormat, book
           return { content: base64Data, isBase64: true };
         }
       } catch (err) {}
+
+      if (healedPath !== filePath && filePath) {
+        try {
+          const base64Original = await readUriAsBase64(filePath);
+          if (base64Original && base64Original.length > 50) {
+            return { content: base64Original, isBase64: true };
+          }
+        } catch (err2) {}
+      }
 
       return { content: '', isBase64: false };
     } else {

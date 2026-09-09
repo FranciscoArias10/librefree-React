@@ -485,7 +485,11 @@ export function getPdfReaderHTML(
       window.addEventListener('message', handleMessage);
       document.addEventListener('message', handleMessage);
 
-      document.addEventListener('DOMContentLoaded', loadPDF);
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadPDF);
+      } else {
+        loadPDF();
+      }
     })();
   </script>
 </body>

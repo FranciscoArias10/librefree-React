@@ -494,7 +494,11 @@ export function getEpubReaderHTML(
       window.addEventListener('message', handleMessage);
       document.addEventListener('message', handleMessage);
 
-      document.addEventListener('DOMContentLoaded', initEpub);
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initEpub);
+      } else {
+        initEpub();
+      }
     })();
   </script>
 </body>
