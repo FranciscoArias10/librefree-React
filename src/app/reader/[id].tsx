@@ -252,11 +252,21 @@ export default function ReaderScreen() {
     }
     loadData();
 
-    // Cleanup function to stop speech when exiting the reader
     return () => {
       stopSpeech();
     };
   }, [id]);
+
+  useEffect(() => {
+    if (bookData.content && bookData.content.length > 0 && webViewRef.current) {
+      const timer = setTimeout(() => {
+        webViewRef.current?.postMessage(
+          JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: bookData.content } })
+        );
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [bookData]);
 
   const handleUpdateSettings = async (newSettings: Partial<ReadingSettings>) => {
     const updated = { ...settings, ...newSettings };
@@ -296,6 +306,12 @@ export default function ReaderScreen() {
           const newCfi = cfi ? String(cfi) : String(page || progress);
           const newChapter = chapter || (page ? `Página ${page}` : undefined);
           updateBookProgress(book.id, newProgress, newCfi, newChapter);
+        }
+      } else if (data.type === 'INIT_READY') {
+        if (bookData.content && bookData.content.length > 0) {
+          webViewRef.current?.postMessage(
+            JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: bookData.content } })
+          );
         }
       } else if (data.type === 'COVER_GENERATED') {
         const { coverPath } = data.payload;

@@ -80,5 +80,33 @@ export async function runBookFilesTests(): Promise<{ passed: number; failed: num
     assert(false, `TXT test failed: ${e.message}`);
   }
 
+  // Test User Uploaded Files in booktry/
+  const booktryDir = path.join(process.cwd(), 'booktry');
+  if (fs.existsSync(booktryDir)) {
+    console.log('\n📖 [SUITE 7] Verification of User Files in booktry/');
+    const userFiles = fs.readdirSync(booktryDir);
+    for (const f of userFiles) {
+      if (f.endsWith('.pdf')) {
+        try {
+          const buf = fs.readFileSync(path.join(booktryDir, f));
+          const b64 = buf.toString('base64');
+          const html = getPdfReaderHTML(b64, '1', defaultSettings);
+          assert(html.includes('LOAD_BOOK_DATA') && html.includes('INIT_READY'), `booktry/${f} generated lightweight hybrid HTML (${Math.round(html.length / 1024)} KB)`);
+        } catch (err: any) {
+          assert(false, `booktry/${f} failed: ${err.message}`);
+        }
+      } else if (f.endsWith('.epub')) {
+        try {
+          const buf = fs.readFileSync(path.join(booktryDir, f));
+          const b64 = buf.toString('base64');
+          const html = getEpubReaderHTML(b64, true, undefined, defaultSettings);
+          assert(html.includes('LOAD_BOOK_DATA') && html.includes('INIT_READY'), `booktry/${f} generated lightweight hybrid HTML (${Math.round(html.length / 1024)} KB)`);
+        } catch (err: any) {
+          assert(false, `booktry/${f} failed: ${err.message}`);
+        }
+      }
+    }
+  }
+
   return { passed, failed };
 }

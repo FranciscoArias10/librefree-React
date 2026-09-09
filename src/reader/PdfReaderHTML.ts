@@ -9,7 +9,8 @@ export function getPdfReaderHTML(
   onlyFirstPageMode: boolean = false
 ): string {
   const colors = getThemeColors(settings.themeMode);
-  const rawData = JSON.stringify(pdfUriOrBase64);
+  const isLargePayload = pdfUriOrBase64.length > 300000;
+  const rawData = JSON.stringify(isLargePayload ? "" : pdfUriOrBase64);
   const initialPage = parseInt(initialPageStr || '1', 10) || 1;
   const isBase64 = pdfUriOrBase64.length > 1000 && !pdfUriOrBase64.startsWith('file://') && !pdfUriOrBase64.startsWith('http');
 
@@ -352,10 +353,7 @@ export function getPdfReaderHTML(
       async function loadPDF() {
         try {
           if (!pdfSource || pdfSource === '""' || pdfSource.trim().length === 0) {
-            document.getElementById('loading').style.display = 'none';
-            var errBox = document.getElementById('error-box');
-            errBox.style.display = 'block';
-            errBox.innerHTML = "<div style='font-size: 16px; margin-bottom: 8px;'>⚠️ Archivo no encontrado</div><div style='font-size: 13px; font-weight: normal; opacity: 0.8;'>El archivo de este libro no está disponible en la memoria del dispositivo.<br><br>Por favor, elimina este elemento y vuelve a importarlo.</div>";
+            sendToRN("INIT_READY", {});
             return;
           }
 
@@ -490,6 +488,17 @@ export function getPdfReaderHTML(
             if (pdfDoc && pdfDoc.numPages > 0) {
               var targetPage = Math.max(1, Math.min(pdfDoc.numPages, Math.round((data.payload.percent / 100) * pdfDoc.numPages)));
               renderPage(targetPage);
+            }
+          } else if (data.type === 'LOAD_BOOK_DATA') {
+            if (data.payload && data.payload.base64) {
+              pdfSource = data.payload.base64;
+              isBase64 = true;
+              loadPDF();
+            } else {
+              document.getElementById('loading').style.display = 'none';
+              var errBox = document.getElementById('error-box');
+              errBox.style.display = 'block';
+              errBox.innerHTML = "<div style='font-size: 16px; margin-bottom: 8px;'>⚠️ Archivo no encontrado</div><div style='font-size: 13px; font-weight: normal; opacity: 0.8;'>El archivo de este libro no está disponible en la memoria del dispositivo.<br><br>Por favor, elimina este elemento y vuelve a importarlo.</div>";
             }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;

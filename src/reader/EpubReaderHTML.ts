@@ -23,7 +23,8 @@ export function getEpubReaderHTML(
   progressPercentage: number = 0
 ): string {
   const colors = getThemeColors(settings.themeMode);
-  const rawData = JSON.stringify(fileUriOrBase64);
+  const isLargePayload = fileUriOrBase64.length > 300000;
+  const rawData = JSON.stringify(isLargePayload ? "" : fileUriOrBase64);
   const initialLoc = JSON.stringify(initialCfi || '1');
   const savedProgressPct = progressPercentage || 0;
 
@@ -217,10 +218,7 @@ export function getEpubReaderHTML(
       async function initEpub() {
         try {
           if (!fileData || fileData === '""' || fileData.trim().length === 0) {
-            document.getElementById('loading').style.display = 'none';
-            var errBox = document.getElementById('error-box');
-            errBox.style.display = 'block';
-            errBox.innerHTML = "<div style='font-size: 16px; margin-bottom: 8px;'>⚠️ Archivo no encontrado</div><div style='font-size: 13px; font-weight: normal; opacity: 0.8;'>El archivo de este libro no está disponible en la memoria del dispositivo.<br><br>Por favor, elimina este elemento y vuelve a importarlo.</div>";
+            sendToRN("INIT_READY", {});
             return;
           }
 
@@ -458,6 +456,17 @@ export function getEpubReaderHTML(
           if (!data) return;
           if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
             highlightEpubText(data.snippet);
+          } else if (data.type === 'LOAD_BOOK_DATA') {
+            if (data.payload && data.payload.base64) {
+              fileData = data.payload.base64;
+              isB64 = true;
+              initEpub();
+            } else {
+              document.getElementById('loading').style.display = 'none';
+              var errBox = document.getElementById('error-box');
+              errBox.style.display = 'block';
+              errBox.innerHTML = "<div style='font-size: 16px; margin-bottom: 8px;'>⚠️ Archivo no encontrado</div><div style='font-size: 13px; font-weight: normal; opacity: 0.8;'>El archivo de este libro no está disponible en la memoria del dispositivo.<br><br>Por favor, elimina este elemento y vuelve a importarlo.</div>";
+            }
           } else if (data.type === 'NEXT_PAGE') {
             nextPage();
           } else if (data.type === 'PREV_PAGE') {
