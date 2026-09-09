@@ -67,9 +67,9 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
+      onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponderCapture: () => false,
       onPanResponderGrant: (evt, gestureState) => {
         setIsDragging(true);
         initialPctRef.current = dragPercent;
@@ -219,6 +219,18 @@ export default function ReaderScreen() {
     type: 'success',
   });
 
+  const isWebViewReadyRef = useRef(false);
+  const bookDataRef = useRef(bookData);
+  bookDataRef.current = bookData;
+
+  const sendBookDataToWebView = () => {
+    if (bookDataRef.current.content && webViewRef.current) {
+      webViewRef.current.postMessage(
+        JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: bookDataRef.current.content } })
+      );
+    }
+  };
+
   useEffect(() => {
     async function loadData() {
       if (!id) return;
@@ -243,6 +255,10 @@ export default function ReaderScreen() {
 
           const data = await readBookContent(b.filePath, b.format, b.id);
           setBookData(data);
+          bookDataRef.current = data;
+          if (isWebViewReadyRef.current) {
+            sendBookDataToWebView();
+          }
         }
       } catch (err) {
         console.error('Error al cargar libro para lectura:', err);
@@ -258,13 +274,8 @@ export default function ReaderScreen() {
   }, [id]);
 
   useEffect(() => {
-    if (bookData.content && bookData.content.length > 0 && webViewRef.current) {
-      const timer = setTimeout(() => {
-        webViewRef.current?.postMessage(
-          JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: bookData.content } })
-        );
-      }, 150);
-      return () => clearTimeout(timer);
+    if (bookData.content && bookData.content.length > 0 && isWebViewReadyRef.current) {
+      sendBookDataToWebView();
     }
   }, [bookData]);
 
@@ -308,11 +319,8 @@ export default function ReaderScreen() {
           updateBookProgress(book.id, newProgress, newCfi, newChapter);
         }
       } else if (data.type === 'INIT_READY') {
-        if (bookData.content && bookData.content.length > 0) {
-          webViewRef.current?.postMessage(
-            JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: bookData.content } })
-          );
-        }
+        isWebViewReadyRef.current = true;
+        sendBookDataToWebView();
       } else if (data.type === 'COVER_GENERATED') {
         const { coverPath } = data.payload;
         if (book && coverPath && coverPath.length > 50) {
@@ -359,13 +367,13 @@ export default function ReaderScreen() {
   const htmlSource = useMemo(() => {
     if (!book) return '';
     if (book.format === 'EPUB') {
-      return getEpubReaderHTML(bookData.content || book.filePath, bookData.isBase64, book.currentLocation, settings, book.progressPercentage);
+      return getEpubReaderHTML('', true, book.currentLocation, settings, book.progressPercentage);
     }
     if (book.format === 'PDF') {
-      return getPdfReaderHTML(bookData.content, book.currentLocation || '1', settings);
+      return getPdfReaderHTML('', book.currentLocation || '1', settings);
     }
     return getTxtReaderHTML(bookData.content, book.title, settings);
-  }, [book?.id, bookData.content, book?.progressPercentage]);
+  }, [book?.id, settings.themeMode, settings.fontSize, settings.fontFamily]);
 
   if (loading || !book) {
     return (
