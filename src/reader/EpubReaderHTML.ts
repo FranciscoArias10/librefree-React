@@ -216,6 +216,14 @@ export function getEpubReaderHTML(
 
       async function initEpub() {
         try {
+          if (!fileData || fileData === '""' || fileData.trim().length === 0) {
+            document.getElementById('loading').style.display = 'none';
+            var errBox = document.getElementById('error-box');
+            errBox.style.display = 'block';
+            errBox.innerHTML = "<div style='font-size: 16px; margin-bottom: 8px;'>⚠️ Archivo no encontrado</div><div style='font-size: 13px; font-weight: normal; opacity: 0.8;'>El archivo de este libro no está disponible en la memoria del dispositivo.<br><br>Por favor, elimina este elemento y vuelve a importarlo.</div>";
+            return;
+          }
+
           var inputSource = fileData;
           if (fileData && (isB64 || fileData.length > 200)) {
             try {

@@ -96,14 +96,29 @@ export async function copyFileToPermanentStorage(fromUri: string, targetPath: st
   if (!fromUri || !targetPath) return false;
   const rawUri = normalizePath(fromUri);
 
-  // 1. Intentar FileSystem.copyAsync
+  // 1. Intentar FileSystem.copyAsync con ruta normalizada
   try {
     await FileSystem.copyAsync({ from: rawUri, to: targetPath });
     const stats = await FileSystem.getInfoAsync(targetPath);
     if (stats.exists && stats.size && stats.size > 0) return true;
   } catch (e1) {}
 
-  // 2. Intentar lectura en Base64 y escritura permanente
+  // 2. Intentar FileSystem.copyAsync con ruta limpia sin file://
+  try {
+    const rawNoFile = rawUri.replace(/^file:\/\//, '');
+    await FileSystem.copyAsync({ from: rawNoFile, to: targetPath });
+    const stats = await FileSystem.getInfoAsync(targetPath);
+    if (stats.exists && stats.size && stats.size > 0) return true;
+  } catch (e1b) {}
+
+  // 3. Intentar FileSystem.downloadAsync (efectivo para URIs content:// y cache)
+  try {
+    await FileSystem.downloadAsync(rawUri, targetPath);
+    const stats = await FileSystem.getInfoAsync(targetPath);
+    if (stats.exists && stats.size && stats.size > 0) return true;
+  } catch (e1c) {}
+
+  // 4. Intentar lectura en Base64 y escritura permanente
   try {
     const base64Data = await readUriAsBase64(rawUri);
     if (base64Data && base64Data.length > 0) {
@@ -115,7 +130,7 @@ export async function copyFileToPermanentStorage(fromUri: string, targetPath: st
     }
   } catch (e2) {}
 
-  // 3. Fallback con lectura de texto UTF-8
+  // 5. Fallback con lectura de texto UTF-8
   try {
     const textData = await readUriAsText(rawUri);
     if (textData && textData.trim().length > 0) {
@@ -448,6 +463,20 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
           try { await updateBookFilePath(bookId, candidate); } catch (dbErr) {}
         }
         return candidate;
+      }
+
+      // Buscar si el archivo fue renombrado o guardado con timestamp en booksDir
+      const dirItems = await FileSystem.readDirectoryAsync(booksDir);
+      for (const item of dirItems) {
+        const cleanItem = item.toLowerCase();
+        const cleanFile = fileName.toLowerCase();
+        if (cleanItem.includes(cleanFile) || cleanFile.includes(cleanItem)) {
+          const matchedPath = booksDir + item;
+          if (bookId) {
+            try { await updateBookFilePath(bookId, matchedPath); } catch (dbErr) {}
+          }
+          return matchedPath;
+        }
       }
     } catch (e2) {}
   }
