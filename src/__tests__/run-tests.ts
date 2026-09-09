@@ -81,6 +81,10 @@ async function runTestSuite() {
     pdfHtml.includes('id="error-box"'),
     'PdfReaderHTML includes error-box container for displaying friendly unreadable file warnings'
   );
+  assert(
+    pdfHtml.includes('START_BOOK_STREAM') && pdfHtml.includes('BOOK_CHUNK') && pdfHtml.includes('END_BOOK_STREAM'),
+    'PdfReaderHTML supports chunked Base64 streaming for large PDF files (>2MB)'
+  );
 
   // TEST SUITE 3: EPUB READER HTML GENERATOR
   console.log('\n📘 [SUITE 3] EPUB Reader Engine Verification');
@@ -94,6 +98,10 @@ async function runTestSuite() {
   assert(
     epubHtml.includes("window.addEventListener('message'"),
     'EpubReaderHTML includes window.addEventListener("message") for iOS compatibility'
+  );
+  assert(
+    epubHtml.includes('START_BOOK_STREAM') && epubHtml.includes('BOOK_CHUNK') && epubHtml.includes('END_BOOK_STREAM'),
+    'EpubReaderHTML supports chunked Base64 streaming for large EPUB files (>2MB)'
   );
   assert(
     !epubHtml.includes('rendition.display(0);') && !epubHtml.includes('rendition.display(idx);'),

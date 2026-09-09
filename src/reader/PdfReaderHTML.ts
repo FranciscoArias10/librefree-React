@@ -476,6 +476,9 @@ export function getPdfReaderHTML(
         }
       }, false);
 
+      var incomingChunks = [];
+      var expectedChunks = 0;
+
       function handleMessage(event: any) {
         try {
           var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
@@ -489,6 +492,30 @@ export function getPdfReaderHTML(
               var targetPage = Math.max(1, Math.min(pdfDoc.numPages, Math.round((data.payload.percent / 100) * pdfDoc.numPages)));
               renderPage(targetPage);
             }
+          } else if (data.type === 'START_BOOK_STREAM') {
+            incomingChunks = [];
+            expectedChunks = data.payload.totalChunks || 0;
+            var loadEl = document.getElementById('loading');
+            if (loadEl) {
+              loadEl.innerText = "Cargando PDF (0%)...";
+              loadEl.style.display = 'block';
+            }
+          } else if (data.type === 'BOOK_CHUNK') {
+            if (data.payload && data.payload.chunk !== undefined) {
+              incomingChunks[data.payload.index] = data.payload.chunk;
+              if (expectedChunks > 0) {
+                var pct = Math.round(((data.payload.index + 1) / expectedChunks) * 100);
+                var loadEl = document.getElementById('loading');
+                if (loadEl) {
+                  loadEl.innerText = "Cargando PDF (" + pct + "%)...";
+                }
+              }
+            }
+          } else if (data.type === 'END_BOOK_STREAM') {
+            pdfSource = incomingChunks.join('');
+            incomingChunks = [];
+            isBase64 = true;
+            loadPDF();
           } else if (data.type === 'LOAD_BOOK_DATA') {
             if (data.payload && data.payload.base64) {
               pdfSource = data.payload.base64;

@@ -224,11 +224,33 @@ export default function ReaderScreen() {
   bookDataRef.current = bookData;
 
   const sendBookDataToWebView = () => {
-    if (bookDataRef.current.content && webViewRef.current) {
+    const content = bookDataRef.current.content;
+    if (!content || !webViewRef.current) return;
+
+    const CHUNK_SIZE = 250000;
+    const totalChunks = Math.ceil(content.length / CHUNK_SIZE);
+
+    if (totalChunks <= 1) {
       webViewRef.current.postMessage(
-        JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: bookDataRef.current.content } })
+        JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: content } })
+      );
+      return;
+    }
+
+    webViewRef.current.postMessage(
+      JSON.stringify({ type: 'START_BOOK_STREAM', payload: { totalChunks, totalSize: content.length } })
+    );
+
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      webViewRef.current.postMessage(
+        JSON.stringify({ type: 'BOOK_CHUNK', payload: { index: i, chunk } })
       );
     }
+
+    webViewRef.current.postMessage(
+      JSON.stringify({ type: 'END_BOOK_STREAM' })
+    );
   };
 
   useEffect(() => {

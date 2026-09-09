@@ -450,12 +450,39 @@ export function getEpubReaderHTML(
       // 2. rendition.display(target) en epub.js REQUIERE una cadena CFI o un 'href' (book.spine.items[i].href).
       //    Pasar un número entero (ej. 0 o 5) lanzaba un TypeError no capturado (target.indexOf is not a function).
       // 3. Se incluye un fallback a 'spine.items[idx].href' si 'book.locations' no ha terminado de calcularse en segundo plano.
+      var incomingChunks = [];
+      var expectedChunks = 0;
+
       function handleMessage(event: any) {
         try {
           var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
           if (!data) return;
           if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
             highlightEpubText(data.snippet);
+          } else if (data.type === 'START_BOOK_STREAM') {
+            incomingChunks = [];
+            expectedChunks = data.payload.totalChunks || 0;
+            var loadEl = document.getElementById('loading');
+            if (loadEl) {
+              loadEl.innerText = "Cargando e-Book (0%)...";
+              loadEl.style.display = 'block';
+            }
+          } else if (data.type === 'BOOK_CHUNK') {
+            if (data.payload && data.payload.chunk !== undefined) {
+              incomingChunks[data.payload.index] = data.payload.chunk;
+              if (expectedChunks > 0) {
+                var pct = Math.round(((data.payload.index + 1) / expectedChunks) * 100);
+                var loadEl = document.getElementById('loading');
+                if (loadEl) {
+                  loadEl.innerText = "Cargando e-Book (" + pct + "%)...";
+                }
+              }
+            }
+          } else if (data.type === 'END_BOOK_STREAM') {
+            fileData = incomingChunks.join('');
+            incomingChunks = [];
+            isB64 = true;
+            initEpub();
           } else if (data.type === 'LOAD_BOOK_DATA') {
             if (data.payload && data.payload.base64) {
               fileData = data.payload.base64;
