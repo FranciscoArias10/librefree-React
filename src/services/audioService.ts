@@ -1,9 +1,4 @@
-let Audio: any = null;
-try {
-  Audio = require('expo-av').Audio;
-} catch (err) {
-  console.warn('expo-av ExponentAV module not available in Expo Go 57');
-}
+import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
 
 export interface PlaybackStatus {
   isLoaded: boolean;
@@ -14,20 +9,16 @@ export interface PlaybackStatus {
   didJustFinish: boolean;
 }
 
-let soundInstance: any = null;
+let playerInstance: AudioPlayer | null = null;
+let statusSubscription: any = null;
 let statusUpdateCallback: ((status: PlaybackStatus) => void) | null = null;
 
 export async function setupAudioSession(): Promise<void> {
   try {
-    if (Audio && Audio.setAudioModeAsync) {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        staysActiveInBackground: true,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      });
-    }
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+    });
   } catch (error) {
     console.warn('Error al configurar sesión de audio:', error);
   }
@@ -39,40 +30,52 @@ export async function loadAudiobookTrack(
   initialPositionMillis: number = 0
 ): Promise<void> {
   await setupAudioSession();
-  
-  if (soundInstance && soundInstance.unloadAsync) {
-    try {
-      await soundInstance.unloadAsync();
-    } catch (e) {}
-    soundInstance = null;
-  }
+  await unloadAudio();
 
   statusUpdateCallback = onStatusUpdate || null;
 
   try {
-    if (!Audio || !Audio.Sound) {
-      throw new Error('ExponentAV no disponible en esta versión de Expo');
+    const isRemote = uriOrFilePath.startsWith('http') || uriOrFilePath.startsWith('file://');
+    const source = isRemote ? uriOrFilePath : { uri: uriOrFilePath };
+
+    const player = createAudioPlayer(source);
+    playerInstance = player;
+
+    if (initialPositionMillis > 0) {
+      await player.seekTo(initialPositionMillis / 1000);
     }
 
-    const isRemote = uriOrFilePath.startsWith('http') || uriOrFilePath.startsWith('file://');
-    const source = isRemote ? { uri: uriOrFilePath } : { uri: uriOrFilePath };
+    statusSubscription = player.addListener('playbackStatusUpdate', (status: any) => {
+      if (statusUpdateCallback && playerInstance) {
+        statusUpdateCallback({
+          isLoaded: playerInstance.isLoaded ?? true,
+          isPlaying: playerInstance.playing ?? false,
+          positionMillis: Math.round((playerInstance.currentTime || 0) * 1000),
+          durationMillis: Math.round((playerInstance.duration || 1) * 1000),
+          rate: playerInstance.playbackRate || 1.0,
+          didJustFinish: status?.status === 'idle' && (playerInstance.currentTime >= ((playerInstance.duration || 1) - 0.5)),
+        });
+      }
+    });
 
-    const { sound } = await Audio.Sound.createAsync(
-      source,
-      { shouldPlay: false, positionMillis: Math.max(0, initialPositionMillis), rate: 1.0 },
-      onPlaybackStatusUpdate
-    );
-
-    soundInstance = sound;
+    if (onStatusUpdate) {
+      onStatusUpdate({
+        isLoaded: true,
+        isPlaying: player.playing ?? false,
+        positionMillis: Math.max(0, initialPositionMillis),
+        durationMillis: Math.round((player.duration || 1140) * 1000),
+        rate: player.playbackRate || 1.0,
+        didJustFinish: false,
+      });
+    }
   } catch (error) {
-    console.warn('Aviso: ExponentAV no compatible directamente en Expo Go 57:', error);
-    // Fallback status for UI when ExponentAV native module is absent in Expo Go 57
+    console.warn('Aviso al cargar audio con expo-audio:', error);
     if (onStatusUpdate) {
       onStatusUpdate({
         isLoaded: true,
         isPlaying: false,
         positionMillis: Math.max(0, initialPositionMillis),
-        durationMillis: 1140000, // 19 minutes
+        durationMillis: 1140000, // 19 minutes fallback
         rate: 1.0,
         didJustFinish: false,
       });
@@ -80,60 +83,50 @@ export async function loadAudiobookTrack(
   }
 }
 
-function onPlaybackStatusUpdate(status: any): void {
-  if (!status.isLoaded) return;
-
-  const pbStatus: PlaybackStatus = {
-    isLoaded: true,
-    isPlaying: status.isPlaying,
-    positionMillis: status.positionMillis || 0,
-    durationMillis: status.durationMillis || 1,
-    rate: status.rate || 1.0,
-    didJustFinish: status.didJustFinish || false,
-  };
-
-  if (statusUpdateCallback) {
-    statusUpdateCallback(pbStatus);
-  }
-}
-
 export async function playAudio(): Promise<void> {
-  if (soundInstance && soundInstance.playAsync) {
+  if (playerInstance) {
     try {
-      await soundInstance.playAsync();
+      playerInstance.play();
     } catch (e) {}
   }
 }
 
 export async function pauseAudio(): Promise<void> {
-  if (soundInstance && soundInstance.pauseAsync) {
+  if (playerInstance) {
     try {
-      await soundInstance.pauseAsync();
+      playerInstance.pause();
     } catch (e) {}
   }
 }
 
 export async function seekAudio(positionMillis: number): Promise<void> {
-  if (soundInstance && soundInstance.setPositionAsync) {
+  if (playerInstance) {
     try {
-      await soundInstance.setPositionAsync(positionMillis);
+      await playerInstance.seekTo(positionMillis / 1000);
     } catch (e) {}
   }
 }
 
 export async function setPlaybackRate(rate: number): Promise<void> {
-  if (soundInstance && soundInstance.setRateAsync) {
+  if (playerInstance) {
     try {
-      await soundInstance.setRateAsync(rate, true);
+      playerInstance.playbackRate = rate;
     } catch (e) {}
   }
 }
 
 export async function unloadAudio(): Promise<void> {
-  if (soundInstance && soundInstance.unloadAsync) {
+  if (statusSubscription && typeof statusSubscription.remove === 'function') {
     try {
-      await soundInstance.unloadAsync();
+      statusSubscription.remove();
     } catch (e) {}
-    soundInstance = null;
+    statusSubscription = null;
+  }
+  if (playerInstance) {
+    try {
+      playerInstance.remove();
+    } catch (e) {}
+    playerInstance = null;
   }
 }
+

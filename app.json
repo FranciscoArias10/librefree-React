@@ -33,7 +33,8 @@
           "imageWidth": 120
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true
