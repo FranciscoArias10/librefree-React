@@ -10,6 +10,7 @@ import {
   Alert,
   StatusBar,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -61,6 +62,8 @@ export default function BookshelfScreen() {
     } catch (e) {}
   };
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const fetchBooks = async (isInitialLoad: boolean = false) => {
     try {
       if (isInitialLoad) setLoading(true);
@@ -70,6 +73,23 @@ export default function BookshelfScreen() {
       console.error('Error cargando libros:', err);
     } finally {
       if (isInitialLoad) setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const data = await getAllBooks();
+      setBooks(data);
+      setToast({
+        visible: true,
+        message: '✓ Estantería actualizada.',
+        type: 'info',
+      });
+    } catch (err) {
+      console.error('Error al refrescar estantería:', err);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -251,14 +271,24 @@ export default function BookshelfScreen() {
             </View>
           </View>
 
-          <TouchableOpacity
-            style={[styles.importBtn, { backgroundColor: theme.accent }]}
-            onPress={handleImportBook}
-            activeOpacity={0.8}
-          >
-            <Feather name="plus" size={18} color="#FFFFFF" />
-            <Text style={styles.importBtnText}>Importar</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.refreshHeaderBtn, { backgroundColor: theme.bgInput, borderColor: theme.border }]}
+              onPress={handleRefresh}
+              activeOpacity={0.7}
+            >
+              <Feather name="refresh-cw" size={16} color={theme.accent} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.importBtn, { backgroundColor: theme.accent }]}
+              onPress={handleImportBook}
+              activeOpacity={0.8}
+            >
+              <Feather name="plus" size={18} color="#FFFFFF" />
+              <Text style={styles.importBtnText}>Importar</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -342,6 +372,14 @@ export default function BookshelfScreen() {
           numColumns={layoutMode === 'list' ? 1 : layoutMode === 'grid3' ? 3 : 2}
           columnWrapperStyle={layoutMode !== 'list' ? styles.shelfColumnWrapper : undefined}
           contentContainerStyle={styles.shelfListContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[theme.accent]}
+              tintColor={theme.accent}
+            />
+          }
           renderItem={({ item }) => (
             <BookCard
               book={item}
@@ -399,6 +437,14 @@ const styles = StyleSheet.create({
   appSubtitle: {
     fontSize: 12,
     marginTop: 1,
+  },
+  refreshHeaderBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   importBtn: {
     flexDirection: 'row',
