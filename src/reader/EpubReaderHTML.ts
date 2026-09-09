@@ -1,4 +1,6 @@
 import { ReadingSettings } from '../types/book';
+import { JSZIP_CODE } from './libs/jszipBundled';
+import { EPUB_JS_CODE } from './libs/epubjsBundled';
 
 export function getThemeColors(themeMode: string) {
   switch (themeMode) {
@@ -32,8 +34,16 @@ export function getEpubReaderHTML(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
   <title>EPUB Reader - HD Page Flip</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
+  <script>${JSZIP_CODE}</script>
+  <script>${EPUB_JS_CODE}</script>
+  <script>
+    if (typeof JSZip === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"><\\/script>');
+    }
+    if (typeof ePub === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"><\\/script>');
+    }
+  </script>
   <style>
     * {
       box-sizing: border-box;

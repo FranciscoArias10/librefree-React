@@ -1,5 +1,6 @@
 import { ReadingSettings } from '../types/book';
 import { getThemeColors } from './EpubReaderHTML';
+import { PDF_JS_CODE } from './libs/pdfjsBundled';
 
 export function getPdfReaderHTML(
   pdfUriOrBase64: string,
@@ -29,7 +30,12 @@ export function getPdfReaderHTML(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
   <title>PDF Reader - Ultra HD Retina</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>${PDF_JS_CODE}</script>
+  <script>
+    if (typeof pdfjsLib === 'undefined' && typeof window.pdfjsLib === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\\/script>');
+    }
+  </script>
   <style>
     * {
       box-sizing: border-box;
@@ -62,12 +68,13 @@ export function getPdfReaderHTML(
       box-shadow: 0 6px 24px rgba(0,0,0,0.3);
       border-radius: 6px;
       overflow: hidden;
-      background-color: #FFFFFF;
+      background-color: transparent;
       display: flex;
       justify-content: center;
       align-items: center;
       transform-origin: center center;
       will-change: transform;
+      visibility: hidden;
     }
     canvas {
       display: block;
@@ -87,14 +94,14 @@ export function getPdfReaderHTML(
       font-size: 14px;
       font-weight: 600;
       color: ${colors.text};
-      opacity: 0.8;
+      opacity: 0.9;
       text-align: center;
       background-color: ${colors.bg}E6;
-      padding: 10px 18px;
+      padding: 12px 22px;
       border-radius: 20px;
       pointer-events: none;
       z-index: 10;
-      display: none;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
     }
     #error-box {
       display: none;
@@ -106,11 +113,14 @@ export function getPdfReaderHTML(
       text-align: center;
       color: #E53E3E;
       font-weight: 700;
+      background-color: ${colors.bg};
+      border-radius: 12px;
+      z-index: 15;
     }
   </style>
 </head>
 <body>
-  <div id="loading">Cargando...</div>
+  <div id="loading">Cargando PDF...</div>
   <div id="error-box"></div>
 
   <div id="reader-viewport">
@@ -244,6 +254,11 @@ export function getPdfReaderHTML(
             mainContext.imageSmoothingEnabled = true;
             mainContext.imageSmoothingQuality = 'high';
             mainContext.drawImage(cached, 0, 0);
+            var card = document.getElementById('card-container');
+            if (card) {
+              card.style.backgroundColor = '#FFFFFF';
+              card.style.visibility = 'visible';
+            }
             document.getElementById('loading')!.style.display = 'none';
           } else {
             document.getElementById('loading')!.style.display = 'block';
@@ -257,6 +272,11 @@ export function getPdfReaderHTML(
               mainContext.imageSmoothingEnabled = true;
               mainContext.imageSmoothingQuality = 'high';
               mainContext.drawImage(rendered, 0, 0);
+              var card = document.getElementById('card-container');
+              if (card) {
+                card.style.backgroundColor = '#FFFFFF';
+                card.style.visibility = 'visible';
+              }
             }
             document.getElementById('loading')!.style.display = 'none';
           }

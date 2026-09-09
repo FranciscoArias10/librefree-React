@@ -1,6 +1,7 @@
 import { getPdfReaderHTML } from '../reader/PdfReaderHTML';
 import { getEpubReaderHTML } from '../reader/EpubReaderHTML';
 import { getTxtReaderHTML } from '../reader/TxtReaderHTML';
+import { runBookFilesTests } from './test-book-files';
 
 export function testableNormalizePath(path: string): string {
   if (!path) return '';
@@ -128,6 +129,11 @@ async function runTestSuite() {
   assert(calcPage(100, 200) === 200, 'Scrubber 100% maps to Last Page (200)');
   assert(calcPage(50, 200) === 100, 'Scrubber 50% maps to Page 100');
   assert(calcPage(25, 100) === 25, 'Scrubber 25% maps to Page 25');
+
+  // TEST SUITE 6: REAL TEST BOOKS VERIFICATION
+  const bookFilesRes = await runBookFilesTests();
+  passed += bookFilesRes.passed;
+  failed += bookFilesRes.failed;
 
   console.log('\n====================================================');
   console.log(`📊 TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
