@@ -225,7 +225,14 @@ export default function ReaderScreen() {
 
   const sendBookDataToWebView = () => {
     const content = bookDataRef.current.content;
-    if (!content || !webViewRef.current) return;
+    if (!webViewRef.current) return;
+
+    if (!content || content.length === 0) {
+      webViewRef.current.postMessage(
+        JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: '' } })
+      );
+      return;
+    }
 
     const CHUNK_SIZE = 250000;
     const totalChunks = Math.ceil(content.length / CHUNK_SIZE);
@@ -241,16 +248,24 @@ export default function ReaderScreen() {
       JSON.stringify({ type: 'START_BOOK_STREAM', payload: { totalChunks, totalSize: content.length } })
     );
 
-    for (let i = 0; i < totalChunks; i++) {
-      const chunk = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-      webViewRef.current.postMessage(
-        JSON.stringify({ type: 'BOOK_CHUNK', payload: { index: i, chunk } })
-      );
-    }
+    let currentChunkIdx = 0;
+    const sendNextChunk = () => {
+      if (!webViewRef.current) return;
+      if (currentChunkIdx < totalChunks) {
+        const chunk = content.slice(currentChunkIdx * CHUNK_SIZE, (currentChunkIdx + 1) * CHUNK_SIZE);
+        webViewRef.current.postMessage(
+          JSON.stringify({ type: 'BOOK_CHUNK', payload: { index: currentChunkIdx, chunk } })
+        );
+        currentChunkIdx++;
+        setTimeout(sendNextChunk, 15);
+      } else {
+        webViewRef.current.postMessage(
+          JSON.stringify({ type: 'END_BOOK_STREAM' })
+        );
+      }
+    };
 
-    webViewRef.current.postMessage(
-      JSON.stringify({ type: 'END_BOOK_STREAM' })
-    );
+    setTimeout(sendNextChunk, 15);
   };
 
   useEffect(() => {

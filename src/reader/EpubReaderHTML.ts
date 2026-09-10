@@ -130,7 +130,8 @@ export function getEpubReaderHTML(
       }
 
       function base64ToArrayBuffer(base64) {
-        var binaryString = window.atob(base64);
+        var clean = base64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+        var binaryString = window.atob(clean);
         var len = binaryString.length;
         var bytes = new Uint8Array(len);
         for (var i = 0; i < len; i++) {

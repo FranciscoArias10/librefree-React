@@ -164,7 +164,8 @@ export function getPdfReaderHTML(
       }
 
       function base64ToUint8Array(base64) {
-        var raw = window.atob(base64);
+        var clean = base64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+        var raw = window.atob(clean);
         var rawLength = raw.length;
         var array = new Uint8Array(new ArrayBuffer(rawLength));
         for (var i = 0; i < rawLength; i++) {
@@ -360,7 +361,12 @@ export function getPdfReaderHTML(
           var loadingTask;
           if (isBase64) {
             var pdfData = base64ToUint8Array(pdfSource);
-            loadingTask = pdfjsLib.getDocument({ data: pdfData, disableWorker: true });
+            loadingTask = pdfjsLib.getDocument({
+              data: pdfData,
+              cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+              cMapPacked: true,
+              disableWorker: true
+            });
           } else {
             loadingTask = pdfjsLib.getDocument({
               url: pdfSource,

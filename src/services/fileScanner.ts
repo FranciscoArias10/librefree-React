@@ -533,6 +533,24 @@ export async function readBookContent(filePath: string, format: BookFormat, book
         } catch (err2) {}
       }
 
+      // Auto-heal fallback: Intento de copiar el archivo a booksDir permanente y leerlo
+      try {
+        const booksDir = await ensureBooksDirectoryExists();
+        const baseName = (healedPath || filePath || 'book.pdf').split('/').pop() || 'book.pdf';
+        const cleanName = `${Date.now()}_${baseName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const permPath = booksDir + cleanName;
+        const copied = await copyFileToPermanentStorage(healedPath || filePath, permPath);
+        if (copied) {
+          if (bookId) {
+            try { await updateBookFilePath(bookId, permPath); } catch (eDb) {}
+          }
+          const base64Perm = await readUriAsBase64(permPath);
+          if (base64Perm && base64Perm.length > 50) {
+            return { content: base64Perm, isBase64: true };
+          }
+        }
+      } catch (errCopy) {}
+
       return { content: '', isBase64: false };
     } else {
       try {
