@@ -133,7 +133,7 @@ export function getPdfReaderHTML(
   <script>
     (function() {
       if (window.pdfjsLib) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       }
 
       var pdfDoc = null;
@@ -158,9 +158,38 @@ export function getPdfReaderHTML(
       var lastTapTime = 0;
 
       function sendToRN(type, payload) {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, payload: payload }));
+        var msg = JSON.stringify({ type: type, payload: payload });
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(msg);
+        } else {
+          var retries = 0;
+          var t = setInterval(function() {
+            retries++;
+            if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+              clearInterval(t);
+              window.ReactNativeWebView.postMessage(msg);
+            } else if (retries > 40) {
+              clearInterval(t);
+            }
+          }, 50);
         }
+      }
+
+      function notifyReady() {
+        if (pdfSource && pdfSource.length > 50) return;
+        var pings = 0;
+        var timer = setInterval(function() {
+          pings++;
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: "INIT_READY", payload: {} }));
+            if (pdfSource && pdfSource.length > 50) {
+              clearInterval(timer);
+            }
+          }
+          if (pings > 30) {
+            clearInterval(timer);
+          }
+        }, 150);
       }
 
       function base64ToUint8Array(base64) {
@@ -354,8 +383,14 @@ export function getPdfReaderHTML(
       async function loadPDF() {
         try {
           if (!pdfSource || pdfSource === '""' || pdfSource.trim().length === 0) {
-            sendToRN("INIT_READY", {});
+            notifyReady();
             return;
+          }
+
+          var loadEl = document.getElementById('loading');
+          if (loadEl) {
+            loadEl.innerText = "Procesando PDF...";
+            loadEl.style.display = 'block';
           }
 
           var loadingTask;

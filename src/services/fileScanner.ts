@@ -515,22 +515,29 @@ export async function readBookContent(filePath: string, format: BookFormat, book
     }
 
     const healedPath = await resolveAndHealBookPath(filePath, bookId);
+    console.log(`[readBookContent] Iniciando lectura para formato ${format}:`, { filePath, healedPath, bookId });
 
     if (format === 'EPUB' || format === 'PDF') {
       try {
         const base64Data = await readUriAsBase64(healedPath);
         if (base64Data && base64Data.length > 50) {
+          console.log(`[readBookContent] Éxito leyendo Base64 desde healedPath (${Math.round(base64Data.length / 1024)} KB)`);
           return { content: base64Data, isBase64: true };
         }
-      } catch (err) {}
+      } catch (err: any) {
+        console.warn(`[readBookContent] Fallo al leer Base64 de healedPath:`, err?.message || err);
+      }
 
       if (healedPath !== filePath && filePath) {
         try {
           const base64Original = await readUriAsBase64(filePath);
           if (base64Original && base64Original.length > 50) {
+            console.log(`[readBookContent] Éxito leyendo Base64 desde filePath original (${Math.round(base64Original.length / 1024)} KB)`);
             return { content: base64Original, isBase64: true };
           }
-        } catch (err2) {}
+        } catch (err2: any) {
+          console.warn(`[readBookContent] Fallo al leer Base64 de filePath original:`, err2?.message || err2);
+        }
       }
 
       // Auto-heal fallback: Intento de copiar el archivo a booksDir permanente y leerlo
@@ -539,6 +546,7 @@ export async function readBookContent(filePath: string, format: BookFormat, book
         const baseName = (healedPath || filePath || 'book.pdf').split('/').pop() || 'book.pdf';
         const cleanName = `${Date.now()}_${baseName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
         const permPath = booksDir + cleanName;
+        console.log(`[readBookContent] Intentando copiado permanente a:`, permPath);
         const copied = await copyFileToPermanentStorage(healedPath || filePath, permPath);
         if (copied) {
           if (bookId) {
@@ -546,11 +554,15 @@ export async function readBookContent(filePath: string, format: BookFormat, book
           }
           const base64Perm = await readUriAsBase64(permPath);
           if (base64Perm && base64Perm.length > 50) {
+            console.log(`[readBookContent] Éxito leyendo Base64 tras copiado permanente (${Math.round(base64Perm.length / 1024)} KB)`);
             return { content: base64Perm, isBase64: true };
           }
         }
-      } catch (errCopy) {}
+      } catch (errCopy: any) {
+        console.error(`[readBookContent] Error en copiado permanente auto-heal:`, errCopy?.message || errCopy);
+      }
 
+      console.error(`[readBookContent] No se pudo leer contenido del libro:`, { filePath, healedPath });
       return { content: '', isBase64: false };
     } else {
       try {

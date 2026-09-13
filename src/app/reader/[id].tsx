@@ -220,13 +220,23 @@ export default function ReaderScreen() {
   });
 
   const isWebViewReadyRef = useRef(false);
+  const bookContentLoadingRef = useRef(true);
+  const isStreamingRef = useRef(false);
   const bookDataRef = useRef(bookData);
   bookDataRef.current = bookData;
 
   const sendBookDataToWebView = () => {
-    const content = bookDataRef.current.content;
     if (!webViewRef.current) return;
+    if (bookContentLoadingRef.current) {
+      // Content is still being read from disk, do not send yet
+      return;
+    }
+    if (isStreamingRef.current) {
+      // Stream is already in flight
+      return;
+    }
 
+    const content = bookDataRef.current.content;
     if (!content || content.length === 0) {
       webViewRef.current.postMessage(
         JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: '' } })
@@ -244,13 +254,17 @@ export default function ReaderScreen() {
       return;
     }
 
+    isStreamingRef.current = true;
     webViewRef.current.postMessage(
       JSON.stringify({ type: 'START_BOOK_STREAM', payload: { totalChunks, totalSize: content.length } })
     );
 
     let currentChunkIdx = 0;
     const sendNextChunk = () => {
-      if (!webViewRef.current) return;
+      if (!webViewRef.current) {
+        isStreamingRef.current = false;
+        return;
+      }
       if (currentChunkIdx < totalChunks) {
         const chunk = content.slice(currentChunkIdx * CHUNK_SIZE, (currentChunkIdx + 1) * CHUNK_SIZE);
         webViewRef.current.postMessage(
@@ -262,6 +276,7 @@ export default function ReaderScreen() {
         webViewRef.current.postMessage(
           JSON.stringify({ type: 'END_BOOK_STREAM' })
         );
+        isStreamingRef.current = false;
       }
     };
 
@@ -273,6 +288,8 @@ export default function ReaderScreen() {
       if (!id) return;
       try {
         setLoading(true);
+        bookContentLoadingRef.current = true;
+        isStreamingRef.current = false;
         const b = await getBookById(id);
         const s = await getReadingSettings();
         setSettings(s);
@@ -293,12 +310,12 @@ export default function ReaderScreen() {
           const data = await readBookContent(b.filePath, b.format, b.id);
           setBookData(data);
           bookDataRef.current = data;
-          if (isWebViewReadyRef.current) {
-            sendBookDataToWebView();
-          }
+          bookContentLoadingRef.current = false;
+          sendBookDataToWebView();
         }
       } catch (err) {
         console.error('Error al cargar libro para lectura:', err);
+        bookContentLoadingRef.current = false;
       } finally {
         setLoading(false);
       }
@@ -307,11 +324,12 @@ export default function ReaderScreen() {
 
     return () => {
       stopSpeech();
+      isStreamingRef.current = false;
     };
   }, [id]);
 
   useEffect(() => {
-    if (bookData.content && bookData.content.length > 0 && isWebViewReadyRef.current) {
+    if (bookData.content && bookData.content.length > 0) {
       sendBookDataToWebView();
     }
   }, [bookData]);
@@ -453,6 +471,10 @@ export default function ReaderScreen() {
           originWhitelist={['*']}
           source={{ html: htmlSource, baseUrl: baseUrl }}
           onMessage={handleWebViewMessage}
+          onLoadEnd={() => {
+            isWebViewReadyRef.current = true;
+            sendBookDataToWebView();
+          }}
           style={{ backgroundColor: 'transparent' }}
           javaScriptEnabled
           domStorageEnabled
