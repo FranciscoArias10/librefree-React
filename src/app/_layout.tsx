@@ -1,9 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { LogBox } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import { initDatabase } from '../services/database';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
+
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 LogBox.ignoreLogs([
   "Can't perform a React state update",
@@ -42,9 +45,25 @@ function RootLayoutInner() {
 }
 
 export default function RootLayout() {
+  const [appReady, setAppReady] = useState(false);
+
   useEffect(() => {
-    initDatabase().catch((err) => console.error('Error inicializando DB:', err));
+    async function prepare() {
+      try {
+        await initDatabase();
+      } catch (err) {
+        console.error('Error inicializando DB:', err);
+      } finally {
+        setAppReady(true);
+        await SplashScreen.hideAsync().catch(() => {});
+      }
+    }
+    prepare();
   }, []);
+
+  if (!appReady) {
+    return null;
+  }
 
   return (
     <ThemeProvider>
