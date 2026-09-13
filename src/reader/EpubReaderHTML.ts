@@ -159,14 +159,55 @@ export function getEpubReaderHTML(
       }
 
       function base64ToArrayBuffer(base64) {
-        var clean = base64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
-        var binaryString = window.atob(clean);
-        var len = binaryString.length;
-        var bytes = new Uint8Array(len);
-        for (var i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+        if (!base64) return new ArrayBuffer(0);
+        try {
+          var str = base64.replace(/^data:[^;]+;base64,/, '').replace(/[^A-Za-z0-9+/=_-]/g, '');
+          str = str.replace(/-/g, '+').replace(/_/g, '/');
+          while (str.length % 4 !== 0) {
+            str += '=';
+          }
+
+          var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+          var lookup = new Uint8Array(256);
+          for (var i = 0; i < chars.length; i++) {
+            lookup[chars.charCodeAt(i)] = i;
+          }
+
+          var len = str.length;
+          var placeHolders = str.charAt(len - 1) === '=' ? (str.charAt(len - 2) === '=' ? 2 : 1) : 0;
+          var bytes = new Uint8Array(Math.max(0, (len * 3 / 4) - placeHolders));
+
+          var j = 0;
+          for (var i = 0; i < len; i += 4) {
+            var a = lookup[str.charCodeAt(i)];
+            var b = lookup[str.charCodeAt(i + 1)];
+            var c = lookup[str.charCodeAt(i + 2)];
+            var d = lookup[str.charCodeAt(i + 3)];
+
+            bytes[j++] = (a << 2) | (b >> 4);
+            if (str.charAt(i + 2) !== '=') {
+              bytes[j++] = ((b & 15) << 4) | (c >> 2);
+            }
+            if (str.charAt(i + 3) !== '=') {
+              bytes[j++] = ((c & 3) << 6) | (d & 63);
+            }
+          }
+          return bytes.buffer;
+        } catch (e) {
+          try {
+            var clean = base64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+            var binaryString = window.atob(clean);
+            var len = binaryString.length;
+            var bytes = new Uint8Array(len);
+            for (var k = 0; k < len; k++) {
+              bytes[k] = binaryString.charCodeAt(k);
+            }
+            return bytes.buffer;
+          } catch (e2) {
+            console.error("Error decodificando Base64 EPUB:", e2);
+            return new ArrayBuffer(0);
+          }
         }
-        return bytes.buffer;
       }
 
       function applyStyles() {

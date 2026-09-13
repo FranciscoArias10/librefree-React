@@ -466,17 +466,21 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
 
   // 2. Extraer el nombre base del archivo y buscar en booksDir permanente
   const rawFileName = filePath.split('/').pop() || '';
-  const cleanFileName = rawFileName.replace(/^\d+_/, ''); // Remover prefijo timestamp como 1789280740740_
+  const cleanFileName = rawFileName.replace(/^(\d+_)+/, ''); // Remover TODOS los prefijos timestamp repetidos
 
   try {
     const booksDir = await ensureBooksDirectoryExists();
     const candidate = booksDir + rawFileName;
-    const candidateInfo = await FileSystem.getInfoAsync(candidate);
-    if (candidateInfo.exists && candidateInfo.size && candidateInfo.size > 0) {
-      if (bookId) {
-        try { await updateBookFilePath(bookId, candidate); } catch (dbErr) {}
+    const cleanCandidate = booksDir + cleanFileName;
+
+    for (const cPath of [candidate, cleanCandidate]) {
+      const candidateInfo = await FileSystem.getInfoAsync(cPath);
+      if (candidateInfo.exists && candidateInfo.size && candidateInfo.size > 0) {
+        if (bookId) {
+          try { await updateBookFilePath(bookId, cPath); } catch (dbErr) {}
+        }
+        return cPath;
       }
-      return candidate;
     }
 
     // Buscar si el archivo fue renombrado o guardado con timestamp en booksDir
@@ -532,7 +536,8 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
             // Copiar a booksDir permanente para que nunca más se pierda
             try {
               const booksDir = await ensureBooksDirectoryExists();
-              const permPath = `${booksDir}${Date.now()}_${sItem.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+              const cleanItemName = sItem.replace(/^(\d+_)+/, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+              const permPath = `${booksDir}${Date.now()}_${cleanItemName}`;
               await FileSystem.copyAsync({ from: externalPath, to: permPath });
               const pInfo = await FileSystem.getInfoAsync(permPath);
               if (pInfo.exists && pInfo.size && pInfo.size > 0) {
@@ -595,22 +600,29 @@ export async function readBookContent(filePath: string, format: BookFormat, book
         }
       }
 
-      // Auto-heal fallback: Intento de copiar el archivo a booksDir permanente y leerlo
+      // Auto-heal fallback: Intento de copiar el archivo a booksDir permanente SOLO si la fuente existe fuera de booksDir
       try {
         const booksDir = await ensureBooksDirectoryExists();
-        const baseName = (healedPath || filePath || 'book.pdf').split('/').pop() || 'book.pdf';
-        const cleanName = `${Date.now()}_${baseName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-        const permPath = booksDir + cleanName;
-        console.log(`[readBookContent] Intentando copiado permanente a:`, permPath);
-        const copied = await copyFileToPermanentStorage(healedPath || filePath, permPath);
-        if (copied) {
-          if (bookId) {
-            try { await updateBookFilePath(bookId, permPath); } catch (eDb) {}
-          }
-          const base64Perm = await readUriAsBase64(permPath);
-          if (base64Perm && base64Perm.length > 50) {
-            console.log(`[readBookContent] Éxito leyendo Base64 tras copiado permanente (${Math.round(base64Perm.length / 1024)} KB)`);
-            return { content: base64Perm, isBase64: true };
+        const isInBooksDir = (healedPath && healedPath.includes('/books/')) || (filePath && filePath.includes('/books/'));
+        if (!isInBooksDir) {
+          const sourcePath = healedPath || filePath;
+          const sInfo = await FileSystem.getInfoAsync(sourcePath);
+          if (sInfo.exists && sInfo.size && sInfo.size > 0) {
+            const baseName = sourcePath.split('/').pop() || 'book.pdf';
+            const cleanBase = baseName.replace(/^(\d+_)+/, '');
+            const permPath = `${booksDir}${Date.now()}_${cleanBase.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+            console.log(`[readBookContent] Intentando copiado permanente a:`, permPath);
+            const copied = await copyFileToPermanentStorage(sourcePath, permPath);
+            if (copied) {
+              if (bookId) {
+                try { await updateBookFilePath(bookId, permPath); } catch (eDb) {}
+              }
+              const base64Perm = await readUriAsBase64(permPath);
+              if (base64Perm && base64Perm.length > 50) {
+                console.log(`[readBookContent] Éxito leyendo Base64 tras copiado permanente (${Math.round(base64Perm.length / 1024)} KB)`);
+                return { content: base64Perm, isBase64: true };
+              }
+            }
           }
         }
       } catch (errCopy: any) {

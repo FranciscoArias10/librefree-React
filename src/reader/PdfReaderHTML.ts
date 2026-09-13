@@ -195,14 +195,55 @@ export function getPdfReaderHTML(
       }
 
       function base64ToUint8Array(base64) {
-        var clean = base64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
-        var raw = window.atob(clean);
-        var rawLength = raw.length;
-        var array = new Uint8Array(new ArrayBuffer(rawLength));
-        for (var i = 0; i < rawLength; i++) {
-          array[i] = raw.charCodeAt(i);
+        if (!base64) return new Uint8Array(0);
+        try {
+          var str = base64.replace(/^data:[^;]+;base64,/, '').replace(/[^A-Za-z0-9+/=_-]/g, '');
+          str = str.replace(/-/g, '+').replace(/_/g, '/');
+          while (str.length % 4 !== 0) {
+            str += '=';
+          }
+
+          var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+          var lookup = new Uint8Array(256);
+          for (var i = 0; i < chars.length; i++) {
+            lookup[chars.charCodeAt(i)] = i;
+          }
+
+          var len = str.length;
+          var placeHolders = str.charAt(len - 1) === '=' ? (str.charAt(len - 2) === '=' ? 2 : 1) : 0;
+          var bytes = new Uint8Array(Math.max(0, (len * 3 / 4) - placeHolders));
+
+          var j = 0;
+          for (var i = 0; i < len; i += 4) {
+            var a = lookup[str.charCodeAt(i)];
+            var b = lookup[str.charCodeAt(i + 1)];
+            var c = lookup[str.charCodeAt(i + 2)];
+            var d = lookup[str.charCodeAt(i + 3)];
+
+            bytes[j++] = (a << 2) | (b >> 4);
+            if (str.charAt(i + 2) !== '=') {
+              bytes[j++] = ((b & 15) << 4) | (c >> 2);
+            }
+            if (str.charAt(i + 3) !== '=') {
+              bytes[j++] = ((c & 3) << 6) | (d & 63);
+            }
+          }
+          return bytes;
+        } catch (e) {
+          try {
+            var clean = base64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+            var raw = window.atob(clean);
+            var rawLength = raw.length;
+            var array = new Uint8Array(new ArrayBuffer(rawLength));
+            for (var k = 0; k < rawLength; k++) {
+              array[k] = raw.charCodeAt(k);
+            }
+            return array;
+          } catch (e2) {
+            console.error("Error decodificando Base64 PDF:", e2);
+            return new Uint8Array(0);
+          }
         }
-        return array;
       }
 
       function updateTransform() {
