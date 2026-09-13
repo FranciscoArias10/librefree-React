@@ -250,44 +250,42 @@ export async function readUriAsBase64(uri: string): Promise<string> {
   if (!uri) throw new Error('URI vacía');
   const normalized = normalizePath(uri);
 
-  // 1. FileSystem.readAsStringAsync directo con ruta normalizada
-  try {
-    const data = await FileSystem.readAsStringAsync(normalized, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    if (data && data.length > 0) return data;
-  } catch (e1) {}
+  const candidates = Array.from(new Set([
+    normalized,
+    uri,
+    decodeURI(normalized),
+    decodeURIComponent(normalized),
+    normalized.replace(/%2540/g, '%40').replace(/%252F/g, '%2F'),
+    normalized.replace(/%2540/g, '@').replace(/%252F/g, '/'),
+    normalized.replace(/%40/g, '@').replace(/%2F/g, '/'),
+    normalized.replace(/^file:\/\//, ''),
+    decodeURI(normalized).replace(/^file:\/\//, ''),
+  ])).filter(Boolean);
 
-  // 2. FileSystem directo con URI original sin modificar
-  try {
-    const data = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    if (data && data.length > 0) return data;
-  } catch (e1b) {}
+  let lastError: any = null;
 
-  // 3. Stripped file://
-  try {
-    const raw = normalized.replace(/^file:\/\//, '');
-    const data = await FileSystem.readAsStringAsync(raw, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    if (data && data.length > 0) return data;
-  } catch (e2) {}
+  for (const cUri of candidates) {
+    try {
+      const data = await FileSystem.readAsStringAsync(cUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (data && data.length > 0) return data;
+    } catch (e: any) {
+      lastError = e;
+    }
+  }
 
-  // 4. Fallback con XMLHttpRequest (soporta URIs content:// y file://)
-  try {
-    const data = await readUriWithXHR(normalized);
-    if (data && data.length > 0) return data;
-  } catch (e3) {}
+  // Fallback con XMLHttpRequest
+  for (const cUri of [normalized, uri, decodeURI(normalized)]) {
+    try {
+      const data = await readUriWithXHR(cUri);
+      if (data && data.length > 0) return data;
+    } catch (xhrErr: any) {
+      lastError = xhrErr;
+    }
+  }
 
-  // 5. Fallback con XMLHttpRequest en URI original
-  try {
-    const data = await readUriWithXHR(uri);
-    if (data && data.length > 0) return data;
-  } catch (e4) {}
-
-  throw new Error(`No se pudo leer URI como Base64: ${uri}`);
+  throw new Error(`No se pudo leer URI como Base64: ${lastError?.message || lastError || uri}`);
 }
 
 export async function readUriAsText(uri: string): Promise<string> {
@@ -443,60 +441,117 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
   if (!filePath) return '';
   const normalized = normalizePath(filePath);
 
-  // 1. Probar ruta directa
-  try {
-    const info = await FileSystem.getInfoAsync(normalized);
-    if (info.exists && info.size && info.size > 0) {
-      return normalized;
-    }
-  } catch (e) {}
+  // 1. Probar ruta directa y variantes decodificadas de Expo
+  const pathVariants = Array.from(new Set([
+    normalized,
+    decodeURI(normalized),
+    decodeURIComponent(normalized),
+    normalized.replace(/%2540/g, '%40').replace(/%252F/g, '%2F'),
+    normalized.replace(/%2540/g, '@').replace(/%252F/g, '/'),
+    normalized.replace(/%40/g, '@').replace(/%2F/g, '/'),
+    normalized.replace(/^file:\/\//, ''),
+  ])).filter(Boolean);
+
+  for (const variant of pathVariants) {
+    try {
+      const info = await FileSystem.getInfoAsync(variant);
+      if (info.exists && info.size && info.size > 0) {
+        if (bookId && variant !== filePath) {
+          try { await updateBookFilePath(bookId, variant); } catch (eDb) {}
+        }
+        return variant;
+      }
+    } catch (e) {}
+  }
 
   // 2. Extraer el nombre base del archivo y buscar en booksDir permanente
-  const fileName = filePath.split('/').pop() || '';
-  if (fileName) {
-    try {
-      const booksDir = await ensureBooksDirectoryExists();
-      const candidate = booksDir + fileName;
-      const candidateInfo = await FileSystem.getInfoAsync(candidate);
-      if (candidateInfo.exists && candidateInfo.size && candidateInfo.size > 0) {
-        if (bookId) {
-          try { await updateBookFilePath(bookId, candidate); } catch (dbErr) {}
-        }
-        return candidate;
-      }
+  const rawFileName = filePath.split('/').pop() || '';
+  const cleanFileName = rawFileName.replace(/^\d+_/, ''); // Remover prefijo timestamp como 1789280740740_
 
-      // Buscar si el archivo fue renombrado o guardado con timestamp en booksDir
-      const dirItems = await FileSystem.readDirectoryAsync(booksDir);
-      for (const item of dirItems) {
-        const cleanItem = item.toLowerCase();
-        const cleanFile = fileName.toLowerCase();
-        if (cleanItem.includes(cleanFile) || cleanFile.includes(cleanItem)) {
-          const matchedPath = booksDir + item;
+  try {
+    const booksDir = await ensureBooksDirectoryExists();
+    const candidate = booksDir + rawFileName;
+    const candidateInfo = await FileSystem.getInfoAsync(candidate);
+    if (candidateInfo.exists && candidateInfo.size && candidateInfo.size > 0) {
+      if (bookId) {
+        try { await updateBookFilePath(bookId, candidate); } catch (dbErr) {}
+      }
+      return candidate;
+    }
+
+    // Buscar si el archivo fue renombrado o guardado con timestamp en booksDir
+    const dirItems = await FileSystem.readDirectoryAsync(booksDir);
+    const targetWords = (cleanFileName || rawFileName)
+      .replace(/\.[^.]+$/, '')
+      .split(/[-_.\s]+/)
+      .filter(w => w.length >= 3);
+
+    for (const item of dirItems) {
+      const cleanItem = item.toLowerCase();
+      const cleanTarget = (cleanFileName || rawFileName).toLowerCase();
+      const matchesTargetWords = targetWords.length > 0 && targetWords.slice(0, 3).every(w => cleanItem.includes(w.toLowerCase()));
+      if (cleanItem.includes(cleanTarget) || cleanTarget.includes(cleanItem) || matchesTargetWords) {
+        const matchedPath = booksDir + item;
+        const mInfo = await FileSystem.getInfoAsync(matchedPath);
+        if (mInfo.exists && mInfo.size && mInfo.size > 0) {
           if (bookId) {
             try { await updateBookFilePath(bookId, matchedPath); } catch (dbErr) {}
           }
           return matchedPath;
         }
       }
-    } catch (e2) {}
-  }
+    }
+  } catch (e2) {}
 
-  // 3. Probar corregir distorsiones de %40 vs @ en rutas de Expo
-  try {
-    let altPath = normalized;
-    if (altPath.includes('@francisco_a')) {
-      altPath = altPath.replace(/@francisco_a/g, '%40francisco_a').replace(/\/Librefree-React/g, '%2FLibrefree-React');
-    } else if (altPath.includes('%40francisco_a')) {
-      altPath = altPath.replace(/%40francisco_a/g, '@francisco_a').replace(/%2FLibrefree-React/g, '/Librefree-React');
-    }
-    const altInfo = await FileSystem.getInfoAsync(altPath);
-    if (altInfo.exists && altInfo.size && altInfo.size > 0) {
-      if (bookId) {
-        try { await updateBookFilePath(bookId, altPath); } catch (dbErr) {}
+  // 3. Búsqueda profunda en directorios externos comunes de Android (Download, Documents, Books, Cache)
+  const searchDirs = [
+    'file:///storage/emulated/0/Download/',
+    'file:///storage/emulated/0/Documents/',
+    'file:///storage/emulated/0/Books/',
+    FileSystem.cacheDirectory || '',
+  ];
+
+  const extTargetWords = (cleanFileName || rawFileName)
+    .replace(/\.[^.]+$/, '')
+    .split(/[-_.\s]+/)
+    .filter(w => w.length >= 3);
+
+  for (const sDir of searchDirs) {
+    if (!sDir) continue;
+    try {
+      const dInfo = await FileSystem.getInfoAsync(sDir);
+      if (!dInfo.exists || !dInfo.isDirectory) continue;
+      const sItems = await FileSystem.readDirectoryAsync(sDir);
+      for (const sItem of sItems) {
+        const lowerItem = sItem.toLowerCase();
+        const matchesWords = extTargetWords.length > 0 && extTargetWords.slice(0, 3).every(w => lowerItem.includes(w.toLowerCase()));
+        if (matchesWords || lowerItem.includes((cleanFileName || rawFileName).toLowerCase())) {
+          const externalPath = sDir.endsWith('/') ? `${sDir}${sItem}` : `${sDir}/${sItem}`;
+          const extInfo = await FileSystem.getInfoAsync(externalPath);
+          if (extInfo.exists && extInfo.size && extInfo.size > 0) {
+            // Copiar a booksDir permanente para que nunca más se pierda
+            try {
+              const booksDir = await ensureBooksDirectoryExists();
+              const permPath = `${booksDir}${Date.now()}_${sItem.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+              await FileSystem.copyAsync({ from: externalPath, to: permPath });
+              const pInfo = await FileSystem.getInfoAsync(permPath);
+              if (pInfo.exists && pInfo.size && pInfo.size > 0) {
+                if (bookId) {
+                  try { await updateBookFilePath(bookId, permPath); } catch (dbErr) {}
+                }
+                return permPath;
+              }
+            } catch (copyErr) {}
+
+            if (bookId) {
+              try { await updateBookFilePath(bookId, externalPath); } catch (dbErr) {}
+            }
+            return externalPath;
+          }
+        }
       }
-      return altPath;
-    }
-  } catch (e3) {}
+    } catch (eSearch) {}
+  }
 
   return normalized;
 }
@@ -559,10 +614,10 @@ export async function readBookContent(filePath: string, format: BookFormat, book
           }
         }
       } catch (errCopy: any) {
-        console.error(`[readBookContent] Error en copiado permanente auto-heal:`, errCopy?.message || errCopy);
+        console.warn(`[readBookContent] Error en copiado permanente auto-heal:`, errCopy?.message || errCopy);
       }
 
-      console.error(`[readBookContent] No se pudo leer contenido del libro:`, { filePath, healedPath });
+      console.warn(`[readBookContent] No se pudo leer contenido del libro en disco:`, { filePath, healedPath });
       return { content: '', isBase64: false };
     } else {
       try {

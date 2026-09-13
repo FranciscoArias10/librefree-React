@@ -13,12 +13,17 @@ LogBox.ignoreLogs([
   "hasn't mounted yet",
   "useLinking",
   "ExponentAV",
+  "[readBookContent]",
 ]);
 
 const origConsoleError = console.error;
 console.error = (...args: any[]) => {
   const msg = typeof args[0] === 'string' ? args[0] : '';
-  if (msg.includes("Can't perform a React state update") || msg.includes("hasn't mounted yet")) {
+  if (
+    msg.includes("Can't perform a React state update") ||
+    msg.includes("hasn't mounted yet") ||
+    msg.includes("[readBookContent]")
+  ) {
     return;
   }
   origConsoleError(...args);
