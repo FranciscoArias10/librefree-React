@@ -181,23 +181,6 @@ export function getPdfReaderHTML(
         sendToRN('REPICK_FILE', {});
       };
 
-      function notifyReady() {
-        if (pdfSource && pdfSource.length > 50) return;
-        var pings = 0;
-        var timer = setInterval(function() {
-          pings++;
-          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: "INIT_READY", payload: {} }));
-            if (pdfSource && pdfSource.length > 50) {
-              clearInterval(timer);
-            }
-          }
-          if (pings > 30) {
-            clearInterval(timer);
-          }
-        }, 150);
-      }
-
       function base64ToUint8Array(base64) {
         if (!base64) return new Uint8Array(0);
         try {
@@ -435,7 +418,13 @@ export function getPdfReaderHTML(
       async function loadPDF() {
         try {
           if (!pdfSource || pdfSource === '""' || pdfSource.trim().length === 0) {
-            notifyReady();
+            var loadEl = document.getElementById('loading');
+            if (loadEl) loadEl.style.display = 'none';
+            var errBox = document.getElementById('error-box');
+            if (errBox) {
+              errBox.style.display = 'block';
+              errBox.innerHTML = "<div style='font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #EF4444;'>⚠️ Archivo no disponible</div><div style='font-size: 14px; opacity: 0.85; line-height: 1.5; color: inherit;'>El archivo de este libro no se encuentra o está incompleto en el dispositivo.<br><br>Pulsa el botón para buscarlo y vincularlo de nuevo.</div><button id='repick-btn' onclick='window.repickFile()' style='margin-top: 18px; padding: 12px 22px; background: #6366F1; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(99,102,241,0.4);'>Re-seleccionar archivo</button>";
+            }
             return;
           }
 
@@ -577,44 +566,20 @@ export function getPdfReaderHTML(
         }
       }, false);
 
-      var incomingChunks = [];
-      var expectedChunks = 0;
-
+      var streamedPdfChunks = [];
       function handleMessage(event) {
         try {
           var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
           if (!data) return;
-          if (data.type === 'NEXT_PAGE') {
-            nextPage();
-          } else if (data.type === 'PREV_PAGE') {
-            prevPage();
-          } else if (data.type === 'SEEK_PERCENT') {
-            if (pdfDoc && pdfDoc.numPages > 0) {
-              var targetPage = Math.max(1, Math.min(pdfDoc.numPages, Math.round((data.payload.percent / 100) * pdfDoc.numPages)));
-              renderPage(targetPage);
-            }
-          } else if (data.type === 'START_BOOK_STREAM') {
-            incomingChunks = [];
-            expectedChunks = data.payload.totalChunks || 0;
-            var loadEl = document.getElementById('loading');
-            if (loadEl) {
-              loadEl.innerText = "Cargando PDF (0%)...";
-              loadEl.style.display = 'block';
-            }
+          if (data.type === 'START_BOOK_STREAM') {
+            streamedPdfChunks = [];
           } else if (data.type === 'BOOK_CHUNK') {
-            if (data.payload && data.payload.chunk !== undefined) {
-              incomingChunks[data.payload.index] = data.payload.chunk;
-              if (expectedChunks > 0) {
-                var pct = Math.round(((data.payload.index + 1) / expectedChunks) * 100);
-                var loadEl = document.getElementById('loading');
-                if (loadEl) {
-                  loadEl.innerText = "Cargando PDF (" + pct + "%)...";
-                }
-              }
+            if (data.payload && data.payload.chunk) {
+              streamedPdfChunks.push(data.payload.chunk);
             }
           } else if (data.type === 'END_BOOK_STREAM') {
-            pdfSource = incomingChunks.join('');
-            incomingChunks = [];
+            pdfSource = streamedPdfChunks.join('');
+            streamedPdfChunks = [];
             isBase64 = true;
             loadPDF();
           } else if (data.type === 'LOAD_BOOK_DATA') {
@@ -622,14 +587,15 @@ export function getPdfReaderHTML(
               pdfSource = data.payload.base64;
               isBase64 = true;
               loadPDF();
-            } else {
-              var loadEl = document.getElementById('loading');
-              if (loadEl) loadEl.style.display = 'none';
-              var errBox = document.getElementById('error-box');
-              if (errBox) {
-                errBox.style.display = 'block';
-                errBox.innerHTML = "<div style='font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #EF4444;'>⚠️ Archivo no disponible</div><div style='font-size: 14px; opacity: 0.85; line-height: 1.5; color: inherit;'>El archivo de este libro no se encuentra o está incompleto en el dispositivo.<br><br>Pulsa el botón para buscarlo y vincularlo de nuevo.</div><button id='repick-btn' onclick='window.repickFile()' style='margin-top: 18px; padding: 12px 22px; background: #6366F1; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(99,102,241,0.4);'>Re-seleccionar archivo</button>";
-              }
+            }
+          } else if (data.type === 'NEXT_PAGE') {
+            nextPage();
+          } else if (data.type === 'PREV_PAGE') {
+            prevPage();
+          } else if (data.type === 'SEEK_PERCENT') {
+            if (pdfDoc && pdfDoc.numPages > 0) {
+              var targetPage = Math.max(1, Math.min(pdfDoc.numPages, Math.round((data.payload.percent / 100) * pdfDoc.numPages)));
+              renderPage(targetPage);
             }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;
@@ -647,6 +613,8 @@ export function getPdfReaderHTML(
 
       window.addEventListener('message', handleMessage);
       document.addEventListener('message', handleMessage);
+
+      sendToRN('INIT_READY', { format: 'PDF' });
 
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', loadPDF);

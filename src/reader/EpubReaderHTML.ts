@@ -145,23 +145,6 @@ export function getEpubReaderHTML(
         sendToRN('REPICK_FILE', {});
       };
 
-      function notifyReady() {
-        if (fileData && fileData.length > 50) return;
-        var pings = 0;
-        var timer = setInterval(function() {
-          pings++;
-          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: "INIT_READY", payload: {} }));
-            if (fileData && fileData.length > 50) {
-              clearInterval(timer);
-            }
-          }
-          if (pings > 30) {
-            clearInterval(timer);
-          }
-        }, 150);
-      }
-
       function base64ToArrayBuffer(base64) {
         if (!base64) return new ArrayBuffer(0);
         try {
@@ -293,7 +276,13 @@ export function getEpubReaderHTML(
       async function initEpub() {
         try {
           if (!fileData || fileData === '""' || fileData.trim().length === 0) {
-            notifyReady();
+            var loadEl = document.getElementById('loading');
+            if (loadEl) loadEl.style.display = 'none';
+            var errBox = document.getElementById('error-box');
+            if (errBox) {
+              errBox.style.display = 'block';
+              errBox.innerHTML = "<div style='font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #EF4444;'>⚠️ Archivo no disponible</div><div style='font-size: 14px; opacity: 0.85; line-height: 1.5; color: inherit;'>El archivo de este libro no se encuentra o está incompleto en el dispositivo.<br><br>Pulsa el botón para buscarlo y vincularlo de nuevo.</div><button id='repick-btn' onclick='window.repickFile()' style='margin-top: 18px; padding: 12px 22px; background: #6366F1; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(99,102,241,0.4);'>Re-seleccionar archivo</button>";
+            }
             return;
           }
 
@@ -528,52 +517,29 @@ export function getEpubReaderHTML(
       // 2. rendition.display(target) en epub.js REQUIERE una cadena CFI o un 'href' (book.spine.items[i].href).
       //    Pasar un número entero (ej. 0 o 5) lanzaba un TypeError no capturado (target.indexOf is not a function).
       // 3. Se incluye un fallback a 'spine.items[idx].href' si 'book.locations' no ha terminado de calcularse en segundo plano.
-      var incomingChunks = [];
-      var expectedChunks = 0;
-
+      var streamedEpubChunks = [];
       function handleMessage(event) {
         try {
           var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
           if (!data) return;
-          if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
-            highlightEpubText(data.snippet);
-          } else if (data.type === 'START_BOOK_STREAM') {
-            incomingChunks = [];
-            expectedChunks = data.payload.totalChunks || 0;
-            var loadEl = document.getElementById('loading');
-            if (loadEl) {
-              loadEl.innerText = "Cargando e-Book (0%)...";
-              loadEl.style.display = 'block';
-            }
+          if (data.type === 'START_BOOK_STREAM') {
+            streamedEpubChunks = [];
           } else if (data.type === 'BOOK_CHUNK') {
-            if (data.payload && data.payload.chunk !== undefined) {
-              incomingChunks[data.payload.index] = data.payload.chunk;
-              if (expectedChunks > 0) {
-                var pct = Math.round(((data.payload.index + 1) / expectedChunks) * 100);
-                var loadEl = document.getElementById('loading');
-                if (loadEl) {
-                  loadEl.innerText = "Cargando e-Book (" + pct + "%)...";
-                }
-              }
+            if (data.payload && data.payload.chunk) {
+              streamedEpubChunks.push(data.payload.chunk);
             }
           } else if (data.type === 'END_BOOK_STREAM') {
-            fileData = incomingChunks.join('');
-            incomingChunks = [];
+            fileData = streamedEpubChunks.join('');
+            streamedEpubChunks = [];
             isB64 = true;
             initEpub();
+          } else if (data.type === 'HIGHLIGHT_SPEECH_TEXT') {
+            highlightEpubText(data.snippet);
           } else if (data.type === 'LOAD_BOOK_DATA') {
             if (data.payload && data.payload.base64) {
               fileData = data.payload.base64;
               isB64 = true;
               initEpub();
-            } else {
-              var loadEl = document.getElementById('loading');
-              if (loadEl) loadEl.style.display = 'none';
-              var errBox = document.getElementById('error-box');
-              if (errBox) {
-                errBox.style.display = 'block';
-                errBox.innerHTML = "<div style='font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #EF4444;'>⚠️ Archivo no disponible</div><div style='font-size: 14px; opacity: 0.85; line-height: 1.5; color: inherit;'>El archivo de este libro no se encuentra o está dañado en el teléfono.<br><br>Pulsa el botón para buscarlo y vincularlo de nuevo.</div><button id='repick-btn' onclick='window.repickFile()' style='margin-top: 18px; padding: 12px 22px; background: #6366F1; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(99,102,241,0.4);'>Re-seleccionar archivo</button>";
-              }
             }
           } else if (data.type === 'NEXT_PAGE') {
             nextPage();
@@ -628,6 +594,8 @@ export function getEpubReaderHTML(
 
       window.addEventListener('message', handleMessage);
       document.addEventListener('message', handleMessage);
+
+      sendToRN('INIT_READY', { format: 'EPUB' });
 
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initEpub);

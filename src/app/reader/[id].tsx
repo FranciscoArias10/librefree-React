@@ -220,77 +220,11 @@ export default function ReaderScreen() {
     type: 'success',
   });
 
-  const isWebViewReadyRef = useRef(false);
-  const bookContentLoadingRef = useRef(true);
-  const isStreamingRef = useRef(false);
-  const bookDataRef = useRef(bookData);
-  bookDataRef.current = bookData;
-
-  const sendBookDataToWebView = () => {
-    if (!webViewRef.current) return;
-    if (bookContentLoadingRef.current) {
-      // Content is still being read from disk, do not send yet
-      return;
-    }
-    if (isStreamingRef.current) {
-      // Stream is already in flight
-      return;
-    }
-
-    const content = bookDataRef.current.content;
-    if (!content || content.length === 0) {
-      webViewRef.current.postMessage(
-        JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: '' } })
-      );
-      return;
-    }
-
-    const CHUNK_SIZE = 250000;
-    const totalChunks = Math.ceil(content.length / CHUNK_SIZE);
-
-    if (totalChunks <= 1) {
-      webViewRef.current.postMessage(
-        JSON.stringify({ type: 'LOAD_BOOK_DATA', payload: { base64: content } })
-      );
-      return;
-    }
-
-    isStreamingRef.current = true;
-    webViewRef.current.postMessage(
-      JSON.stringify({ type: 'START_BOOK_STREAM', payload: { totalChunks, totalSize: content.length } })
-    );
-
-    let currentChunkIdx = 0;
-    const sendNextChunk = () => {
-      if (!webViewRef.current) {
-        isStreamingRef.current = false;
-        return;
-      }
-      if (currentChunkIdx < totalChunks) {
-        const chunk = content.slice(currentChunkIdx * CHUNK_SIZE, (currentChunkIdx + 1) * CHUNK_SIZE);
-        webViewRef.current.postMessage(
-          JSON.stringify({ type: 'BOOK_CHUNK', payload: { index: currentChunkIdx, chunk } })
-        );
-        currentChunkIdx++;
-        setTimeout(sendNextChunk, 15);
-      } else {
-        webViewRef.current.postMessage(
-          JSON.stringify({ type: 'END_BOOK_STREAM' })
-        );
-        isStreamingRef.current = false;
-      }
-    };
-
-    setTimeout(sendNextChunk, 15);
-  };
-
   useEffect(() => {
     async function loadData() {
       if (!id) return;
       try {
         setLoading(true);
-        bookContentLoadingRef.current = true;
-        isStreamingRef.current = false;
         const b = await getBookById(id);
         const s = await getReadingSettings();
         setSettings(s);
@@ -310,13 +244,9 @@ export default function ReaderScreen() {
 
           const data = await readBookContent(b.filePath, b.format, b.id);
           setBookData(data);
-          bookDataRef.current = data;
-          bookContentLoadingRef.current = false;
-          sendBookDataToWebView();
         }
       } catch (err) {
         console.error('Error al cargar libro para lectura:', err);
-        bookContentLoadingRef.current = false;
       } finally {
         setLoading(false);
       }
@@ -325,15 +255,8 @@ export default function ReaderScreen() {
 
     return () => {
       stopSpeech();
-      isStreamingRef.current = false;
     };
   }, [id]);
-
-  useEffect(() => {
-    if (bookData.content && bookData.content.length > 0) {
-      sendBookDataToWebView();
-    }
-  }, [bookData]);
 
   const handleUpdateSettings = async (newSettings: Partial<ReadingSettings>) => {
     const updated = { ...settings, ...newSettings };
@@ -429,13 +352,8 @@ export default function ReaderScreen() {
         setBook({ ...book, filePath: targetPath });
         setToast({ visible: true, message: '✓ Archivo vinculado con éxito', type: 'success' });
 
-        bookContentLoadingRef.current = true;
-        isStreamingRef.current = false;
         const freshData = await readBookContent(targetPath, book.format, book.id);
         setBookData(freshData);
-        bookDataRef.current = freshData;
-        bookContentLoadingRef.current = false;
-        sendBookDataToWebView();
       } else {
         setToast({ visible: true, message: 'No se pudo copiar el archivo seleccionado', type: 'error' });
       }
@@ -469,15 +387,15 @@ export default function ReaderScreen() {
   };
 
   const htmlSource = useMemo(() => {
-    if (!book) return '';
+    if (!book || !bookData.content) return '';
     if (book.format === 'EPUB') {
-      return getEpubReaderHTML('', true, book.currentLocation, settings, book.progressPercentage);
+      return getEpubReaderHTML(bookData.content, bookData.isBase64, book.currentLocation, settings, book.progressPercentage);
     }
     if (book.format === 'PDF') {
-      return getPdfReaderHTML('', book.currentLocation || '1', settings);
+      return getPdfReaderHTML(bookData.content, book.currentLocation || '1', settings);
     }
     return getTxtReaderHTML(bookData.content, book.title, settings);
-  }, [book?.id, settings.themeMode, settings.fontSize, settings.fontFamily]);
+  }, [book?.id, !!bookData.content]);
 
   if (loading || !book) {
     return (
@@ -516,14 +434,11 @@ export default function ReaderScreen() {
       {/* Main Reader Canvas WebView (Fixed Full Screen Height) */}
       <View style={styles.readerCanvas}>
         <WebView
+          key={book.id}
           ref={webViewRef}
           originWhitelist={['*']}
           source={{ html: htmlSource, baseUrl: baseUrl }}
           onMessage={handleWebViewMessage}
-          onLoadEnd={() => {
-            isWebViewReadyRef.current = true;
-            sendBookDataToWebView();
-          }}
           style={{ backgroundColor: 'transparent' }}
           javaScriptEnabled
           domStorageEnabled
