@@ -177,6 +177,10 @@ export function getPdfReaderHTML(
         }
       }
 
+      window.repickFile = function() {
+        sendToRN('REPICK_FILE', {});
+      };
+
       function notifyReady() {
         if (pdfSource && pdfSource.length > 50) return;
         var pings = 0;
@@ -477,10 +481,18 @@ export function getPdfReaderHTML(
           }
 
         } catch (err) {
-          document.getElementById('loading').style.display = 'none';
+          var loadEl = document.getElementById('loading');
+          if (loadEl) loadEl.style.display = 'none';
           var errBox = document.getElementById('error-box');
-          errBox.style.display = 'block';
-          errBox.innerText = "Error cargando PDF: " + err.message;
+          if (errBox) {
+            errBox.style.display = 'block';
+            var isDamaged = err && err.message && (err.message.indexOf('Invalid PDF structure') !== -1 || err.message.indexOf('corrupted') !== -1 || err.message.indexOf('missing') !== -1);
+            if (isDamaged) {
+              errBox.innerHTML = "<div style='font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #EF4444;'>⚠️ Estructura PDF Incompleta o Dañada</div><div style='font-size: 14px; opacity: 0.85; line-height: 1.5; color: inherit;'>El archivo almacenado en el teléfono está incompleto o dañado.<br><br>Pulsa el botón para seleccionarlo de nuevo desde tus descargas o archivos.</div><button id='repick-btn' onclick='window.repickFile()' style='margin-top: 18px; padding: 12px 22px; background: #6366F1; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(99,102,241,0.4);'>Re-seleccionar archivo</button>";
+            } else {
+              errBox.innerText = "Error cargando PDF: " + err.message;
+            }
+          }
         }
       }
 
@@ -611,10 +623,13 @@ export function getPdfReaderHTML(
               isBase64 = true;
               loadPDF();
             } else {
-              document.getElementById('loading').style.display = 'none';
+              var loadEl = document.getElementById('loading');
+              if (loadEl) loadEl.style.display = 'none';
               var errBox = document.getElementById('error-box');
-              errBox.style.display = 'block';
-              errBox.innerHTML = "<div style='font-size: 16px; margin-bottom: 8px;'>⚠️ Archivo no encontrado</div><div style='font-size: 13px; font-weight: normal; opacity: 0.8;'>El archivo de este libro no está disponible en la memoria del dispositivo.<br><br>Por favor, elimina este elemento y vuelve a importarlo.</div>";
+              if (errBox) {
+                errBox.style.display = 'block';
+                errBox.innerHTML = "<div style='font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #EF4444;'>⚠️ Archivo no disponible</div><div style='font-size: 14px; opacity: 0.85; line-height: 1.5; color: inherit;'>El archivo de este libro no se encuentra o está incompleto en el dispositivo.<br><br>Pulsa el botón para buscarlo y vincularlo de nuevo.</div><button id='repick-btn' onclick='window.repickFile()' style='margin-top: 18px; padding: 12px 22px; background: #6366F1; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(99,102,241,0.4);'>Re-seleccionar archivo</button>";
+              }
             }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;

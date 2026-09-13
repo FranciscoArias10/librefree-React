@@ -95,12 +95,13 @@ export async function autoScanDeviceDirectories(
 export async function copyFileToPermanentStorage(fromUri: string, targetPath: string): Promise<boolean> {
   if (!fromUri || !targetPath) return false;
   const rawUri = normalizePath(fromUri);
+  const isBinary = /\.(pdf|epub|mp3|m4b|zip)$/i.test(targetPath);
 
   // 1. Intentar FileSystem.copyAsync con ruta normalizada
   try {
     await FileSystem.copyAsync({ from: rawUri, to: targetPath });
     const stats = await FileSystem.getInfoAsync(targetPath);
-    if (stats.exists && stats.size && stats.size > 0) return true;
+    if (stats.exists && stats.size && stats.size > (isBinary ? 1000 : 0)) return true;
   } catch (e1) {}
 
   // 2. Intentar FileSystem.copyAsync con ruta limpia sin file://
@@ -108,39 +109,43 @@ export async function copyFileToPermanentStorage(fromUri: string, targetPath: st
     const rawNoFile = rawUri.replace(/^file:\/\//, '');
     await FileSystem.copyAsync({ from: rawNoFile, to: targetPath });
     const stats = await FileSystem.getInfoAsync(targetPath);
-    if (stats.exists && stats.size && stats.size > 0) return true;
+    if (stats.exists && stats.size && stats.size > (isBinary ? 1000 : 0)) return true;
   } catch (e1b) {}
 
-  // 3. Intentar FileSystem.downloadAsync (efectivo para URIs content:// y cache)
-  try {
-    await FileSystem.downloadAsync(rawUri, targetPath);
-    const stats = await FileSystem.getInfoAsync(targetPath);
-    if (stats.exists && stats.size && stats.size > 0) return true;
-  } catch (e1c) {}
+  // 3. Intentar FileSystem.downloadAsync (solo para URLs http/https)
+  if (rawUri.startsWith('http://') || rawUri.startsWith('https://')) {
+    try {
+      await FileSystem.downloadAsync(rawUri, targetPath);
+      const stats = await FileSystem.getInfoAsync(targetPath);
+      if (stats.exists && stats.size && stats.size > (isBinary ? 1000 : 0)) return true;
+    } catch (e1c) {}
+  }
 
   // 4. Intentar lectura en Base64 y escritura permanente
   try {
     const base64Data = await readUriAsBase64(rawUri);
-    if (base64Data && base64Data.length > 0) {
+    if (base64Data && base64Data.length > (isBinary ? 500 : 0)) {
       await FileSystem.writeAsStringAsync(targetPath, base64Data, {
         encoding: FileSystem.EncodingType.Base64,
       });
       const stats = await FileSystem.getInfoAsync(targetPath);
-      if (stats.exists && stats.size && stats.size > 0) return true;
+      if (stats.exists && stats.size && stats.size > (isBinary ? 1000 : 0)) return true;
     }
   } catch (e2) {}
 
-  // 5. Fallback con lectura de texto UTF-8
-  try {
-    const textData = await readUriAsText(rawUri);
-    if (textData && textData.trim().length > 0) {
-      await FileSystem.writeAsStringAsync(targetPath, textData, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      const stats = await FileSystem.getInfoAsync(targetPath);
-      if (stats.exists && stats.size && stats.size > 0) return true;
-    }
-  } catch (e3) {}
+  // 5. Fallback con lectura de texto UTF-8 (SOLO para texto plano, NUNCA para binarios PDF/EPUB)
+  if (!isBinary) {
+    try {
+      const textData = await readUriAsText(rawUri);
+      if (textData && textData.trim().length > 0) {
+        await FileSystem.writeAsStringAsync(targetPath, textData, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        const stats = await FileSystem.getInfoAsync(targetPath);
+        if (stats.exists && stats.size && stats.size > 0) return true;
+      }
+    } catch (e3) {}
+  }
 
   return false;
 }
@@ -437,9 +442,23 @@ export async function importBookFromDevice(): Promise<Book | null> {
   }
 }
 
+async function isValidFileOnDisk(uri: string, isBinary: boolean): Promise<boolean> {
+  try {
+    const info = await FileSystem.getInfoAsync(uri);
+    if (!info.exists || !info.size) return false;
+    if (!isBinary) return info.size > 0;
+    // Archivos binarios como PDF o EPUB deben tener un tamaño realista (mínimo 2.5 KB)
+    if (info.size < 2500) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveAndHealBookPath(filePath: string, bookId?: string): Promise<string> {
   if (!filePath) return '';
   const normalized = normalizePath(filePath);
+  const isBinary = /\.(pdf|epub|mp3|m4b)$/i.test(filePath);
 
   // 1. Probar ruta directa y variantes decodificadas de Expo
   const pathVariants = Array.from(new Set([
@@ -454,8 +473,8 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
 
   for (const variant of pathVariants) {
     try {
-      const info = await FileSystem.getInfoAsync(variant);
-      if (info.exists && info.size && info.size > 0) {
+      const valid = await isValidFileOnDisk(variant, isBinary);
+      if (valid) {
         if (bookId && variant !== filePath) {
           try { await updateBookFilePath(bookId, variant); } catch (eDb) {}
         }
@@ -474,8 +493,8 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
     const cleanCandidate = booksDir + cleanFileName;
 
     for (const cPath of [candidate, cleanCandidate]) {
-      const candidateInfo = await FileSystem.getInfoAsync(cPath);
-      if (candidateInfo.exists && candidateInfo.size && candidateInfo.size > 0) {
+      const valid = await isValidFileOnDisk(cPath, isBinary);
+      if (valid) {
         if (bookId) {
           try { await updateBookFilePath(bookId, cPath); } catch (dbErr) {}
         }
@@ -496,8 +515,8 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
       const matchesTargetWords = targetWords.length > 0 && targetWords.slice(0, 3).every(w => cleanItem.includes(w.toLowerCase()));
       if (cleanItem.includes(cleanTarget) || cleanTarget.includes(cleanItem) || matchesTargetWords) {
         const matchedPath = booksDir + item;
-        const mInfo = await FileSystem.getInfoAsync(matchedPath);
-        if (mInfo.exists && mInfo.size && mInfo.size > 0) {
+        const valid = await isValidFileOnDisk(matchedPath, isBinary);
+        if (valid) {
           if (bookId) {
             try { await updateBookFilePath(bookId, matchedPath); } catch (dbErr) {}
           }
@@ -531,16 +550,16 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
         const matchesWords = extTargetWords.length > 0 && extTargetWords.slice(0, 3).every(w => lowerItem.includes(w.toLowerCase()));
         if (matchesWords || lowerItem.includes((cleanFileName || rawFileName).toLowerCase())) {
           const externalPath = sDir.endsWith('/') ? `${sDir}${sItem}` : `${sDir}/${sItem}`;
-          const extInfo = await FileSystem.getInfoAsync(externalPath);
-          if (extInfo.exists && extInfo.size && extInfo.size > 0) {
+          const valid = await isValidFileOnDisk(externalPath, isBinary);
+          if (valid) {
             // Copiar a booksDir permanente para que nunca más se pierda
             try {
               const booksDir = await ensureBooksDirectoryExists();
               const cleanItemName = sItem.replace(/^(\d+_)+/, '').replace(/[^a-zA-Z0-9._-]/g, '_');
               const permPath = `${booksDir}${Date.now()}_${cleanItemName}`;
               await FileSystem.copyAsync({ from: externalPath, to: permPath });
-              const pInfo = await FileSystem.getInfoAsync(permPath);
-              if (pInfo.exists && pInfo.size && pInfo.size > 0) {
+              const pValid = await isValidFileOnDisk(permPath, isBinary);
+              if (pValid) {
                 if (bookId) {
                   try { await updateBookFilePath(bookId, permPath); } catch (dbErr) {}
                 }
@@ -578,11 +597,23 @@ export async function readBookContent(filePath: string, format: BookFormat, book
     console.log(`[readBookContent] Iniciando lectura para formato ${format}:`, { filePath, healedPath, bookId });
 
     if (format === 'EPUB' || format === 'PDF') {
+      const isPdf = format === 'PDF';
+      const isEpub = format === 'EPUB';
+
+      const isValidBinaryBase64 = (b64: string) => {
+        if (!b64 || b64.length < 50) return false;
+        if (isPdf && b64.length < 3500 && !b64.startsWith('JVBER')) return false;
+        if (isEpub && b64.length < 3500 && !b64.startsWith('UEs')) return false;
+        return true;
+      };
+
       try {
         const base64Data = await readUriAsBase64(healedPath);
-        if (base64Data && base64Data.length > 50) {
+        if (isValidBinaryBase64(base64Data)) {
           console.log(`[readBookContent] Éxito leyendo Base64 desde healedPath (${Math.round(base64Data.length / 1024)} KB)`);
           return { content: base64Data, isBase64: true };
+        } else {
+          console.warn(`[readBookContent] healedPath contiene datos corruptos o insuficientes (${base64Data ? base64Data.length : 0} chars)`);
         }
       } catch (err: any) {
         console.warn(`[readBookContent] Fallo al leer Base64 de healedPath:`, err?.message || err);
@@ -591,7 +622,7 @@ export async function readBookContent(filePath: string, format: BookFormat, book
       if (healedPath !== filePath && filePath) {
         try {
           const base64Original = await readUriAsBase64(filePath);
-          if (base64Original && base64Original.length > 50) {
+          if (isValidBinaryBase64(base64Original)) {
             console.log(`[readBookContent] Éxito leyendo Base64 desde filePath original (${Math.round(base64Original.length / 1024)} KB)`);
             return { content: base64Original, isBase64: true };
           }

@@ -13,8 +13,9 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark } from '../../services/database';
-import { readBookContent } from '../../services/fileScanner';
+import * as DocumentPicker from 'expo-document-picker';
+import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark, updateBookFilePath } from '../../services/database';
+import { readBookContent, ensureBooksDirectoryExists, copyFileToPermanentStorage } from '../../services/fileScanner';
 import { getEpubReaderHTML } from '../../reader/EpubReaderHTML';
 import { getTxtReaderHTML } from '../../reader/TxtReaderHTML';
 import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
@@ -392,8 +393,56 @@ export default function ReaderScreen() {
         setCurrentPageText(data.payload.text || '');
       } else if (data.type === 'TOGGLE_BARS') {
         setBarsVisible((prev) => !prev);
+      } else if (data.type === 'REPICK_FILE') {
+        handleRepickFile();
       }
     } catch (e) {}
+  };
+
+  const handleRepickFile = async () => {
+    if (!book) return;
+    try {
+      let mimeTypes = ['*/*'];
+      if (book.format === 'PDF') mimeTypes = ['application/pdf'];
+      else if (book.format === 'EPUB') mimeTypes = ['application/epub+zip'];
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: mimeTypes,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      setToast({ visible: true, message: 'Vinculando nuevo archivo...', type: 'info' });
+
+      const booksDir = await ensureBooksDirectoryExists();
+      const rawName = asset.name || `${book.title}.${book.format.toLowerCase()}`;
+      const cleanName = `${Date.now()}_${rawName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const targetPath = `${booksDir}${cleanName}`;
+
+      const copied = await copyFileToPermanentStorage(asset.uri, targetPath);
+      if (copied) {
+        await updateBookFilePath(book.id, targetPath);
+        setBook({ ...book, filePath: targetPath });
+        setToast({ visible: true, message: '✓ Archivo vinculado con éxito', type: 'success' });
+
+        bookContentLoadingRef.current = true;
+        isStreamingRef.current = false;
+        const freshData = await readBookContent(targetPath, book.format, book.id);
+        setBookData(freshData);
+        bookDataRef.current = freshData;
+        bookContentLoadingRef.current = false;
+        sendBookDataToWebView();
+      } else {
+        setToast({ visible: true, message: 'No se pudo copiar el archivo seleccionado', type: 'error' });
+      }
+    } catch (err: any) {
+      console.error('Error re-seleccionando archivo:', err);
+      setToast({ visible: true, message: 'Error al seleccionar archivo: ' + (err?.message || ''), type: 'error' });
+    }
   };
 
   const handleAddBookmark = async () => {

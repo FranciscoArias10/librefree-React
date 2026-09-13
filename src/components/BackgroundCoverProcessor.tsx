@@ -67,13 +67,16 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
 
         // Set timeout to prevent getting stuck indefinitely on a corrupted book
         timeoutRef.current = setTimeout(() => {
-          console.warn(`[BackgroundCoverProcessor] Timeout procesando portada/texto para libro ${row.id}`);
+          console.log(`[BackgroundCoverProcessor] Timeout procesando portada/texto para libro ${row.id}`);
           failedBookIdsRef.current.add(row.id);
           clearCurrentJob();
         }, 15000);
 
         const data = await readBookContent(row.filePath, row.format, row.id);
-        if (data.content && data.content.length > 5) {
+        const isCorruptPdf = row.format === 'PDF' && data.content && data.content.length < 5000 && !data.content.startsWith('JVBER');
+        const isCorruptEpub = row.format === 'EPUB' && data.content && data.content.length < 5000 && !data.content.startsWith('UEs');
+
+        if (data.content && data.content.length > 50 && !isCorruptPdf && !isCorruptEpub) {
           setCurrentBook({ id: row.id, filePath: row.filePath, format: row.format });
           if (row.format === 'PDF') {
             setHtmlSource(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, true));

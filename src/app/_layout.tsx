@@ -14,6 +14,7 @@ LogBox.ignoreLogs([
   "useLinking",
   "ExponentAV",
   "[readBookContent]",
+  "[BackgroundCoverProcessor]",
 ]);
 
 const origConsoleError = console.error;
@@ -22,7 +23,8 @@ console.error = (...args: any[]) => {
   if (
     msg.includes("Can't perform a React state update") ||
     msg.includes("hasn't mounted yet") ||
-    msg.includes("[readBookContent]")
+    msg.includes("[readBookContent]") ||
+    msg.includes("[BackgroundCoverProcessor]")
   ) {
     return;
   }
