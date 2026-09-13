@@ -406,6 +406,42 @@ export default function ReaderScreen() {
     );
   }
 
+  if (!loading && (!bookData.content || bookData.content.length === 0)) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <View style={{ backgroundColor: theme.card, padding: 28, borderRadius: 20, width: '100%', maxWidth: 440, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 5 }}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>⚠️</Text>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: theme.text, textAlign: 'center', marginBottom: 10 }}>
+            Archivo no disponible
+          </Text>
+          <Text style={{ fontSize: 14, color: theme.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 24 }}>
+            El archivo de <Text style={{ fontWeight: 'bold', color: theme.text }}>"{book.title}"</Text> estaba en una carpeta temporal y el sistema lo eliminó para liberar espacio.
+            {'\n\n'}
+            Pulsa el botón para seleccionarlo de nuevo desde tus descargas o archivos y se guardará de forma permanente en LibreFree.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: theme.accent, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 12, width: '100%', alignItems: 'center', marginBottom: 12, shadowColor: theme.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 3 }}
+            onPress={handleRepickFile}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' }}>📁 Re-seleccionar archivo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ paddingVertical: 10, paddingHorizontal: 20 }}
+            onPress={() => router.back()}
+          >
+            <Text style={{ color: theme.textSecondary, fontSize: 14, fontWeight: '600' }}>Volver a la biblioteca</Text>
+          </TouchableOpacity>
+        </View>
+        <Toast
+          visible={toast.visible}
+          message={toast.message}
+          type={toast.type}
+          onHide={() => setToast((prev) => ({ ...prev, visible: false }))}
+        />
+      </SafeAreaView>
+    );
+  }
+
   const getBackgroundColor = () => {
     if (settings.themeMode === 'sepia') return '#F8F1E3';
     if (settings.themeMode === 'dark') return '#1E1E2E';

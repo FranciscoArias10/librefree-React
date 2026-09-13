@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import JSZip from 'jszip';
-import { addBook, getExtractedBookText, saveExtractedBookText, updateBookFilePath } from './database';
+import { addBook, getBookById, getExtractedBookText, saveExtractedBookText, updateBookFilePath } from './database';
 import { Book, BookFormat } from '../types/book';
 
 export interface ScannedFile {
@@ -39,13 +39,8 @@ export async function autoScanDeviceDirectories(
   const scanFolder = async (dirUri: string, depth: number = 0) => {
     if (!dirUri || depth > 3) return;
     try {
-      if (onProgress) {
-        const folderName = dirUri.split('/').filter(Boolean).pop() || dirUri;
-        onProgress(folderName);
-      }
-
-      const info = await FileSystem.getInfoAsync(dirUri);
-      if (!info.exists || !info.isDirectory) return;
+      const dirInfo = await FileSystem.getInfoAsync(dirUri);
+      if (!dirInfo.exists || !dirInfo.isDirectory) return;
 
       const items = await FileSystem.readDirectoryAsync(dirUri);
       for (const item of items) {
@@ -57,32 +52,32 @@ export async function autoScanDeviceDirectories(
 
         try {
           const itemInfo = await FileSystem.getInfoAsync(itemUri);
-          if (itemInfo.exists) {
-            if (itemInfo.isDirectory) {
-              await scanFolder(itemUri, depth + 1);
-            } else {
-              const ext = item.split('.').pop()?.toLowerCase() || '';
-              if (ext === 'epub' || ext === 'pdf' || ext === 'txt' || ext === 'mp3' || ext === 'm4b') {
-                let format: BookFormat = 'TXT';
-                if (ext === 'epub') format = 'EPUB';
-                else if (ext === 'pdf') format = 'PDF';
-                else if (ext === 'mp3' || ext === 'm4b') format = 'AUDIOBOOK';
+          if (itemInfo.isDirectory) {
+            await scanFolder(itemUri, depth + 1);
+          } else {
+            const ext = item.split('.').pop()?.toLowerCase();
+            let format: BookFormat | null = null;
+            if (ext === 'epub') format = 'EPUB';
+            else if (ext === 'pdf') format = 'PDF';
+            else if (ext === 'txt') format = 'TXT';
+            else if (ext === 'mp3' || ext === 'm4b') format = 'AUDIOBOOK';
 
-                foundFiles.push({
-                  id: `auto_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                  name: item.replace(/_/g, ' '),
-                  uri: itemUri,
-                  size: itemInfo.size || 0,
-                  format,
-                  selected: true,
-                  path: itemUri,
-                });
-              }
+            if (format) {
+              if (onProgress) onProgress(item);
+              foundFiles.push({
+                id: `auto_${Date.now()}_${Math.random()}`,
+                name: item,
+                uri: itemUri,
+                size: itemInfo.size || 0,
+                format,
+                selected: true,
+                path: itemUri,
+              });
             }
           }
-        } catch (itemErr) {}
+        } catch (eItem) {}
       }
-    } catch (err) {}
+    } catch (eDir) {}
   };
 
   for (const dir of baseDirectories) {
@@ -97,22 +92,42 @@ export async function copyFileToPermanentStorage(fromUri: string, targetPath: st
   const rawUri = normalizePath(fromUri);
   const isBinary = /\.(pdf|epub|mp3|m4b|zip)$/i.test(targetPath);
 
-  // 1. Intentar FileSystem.copyAsync con ruta normalizada
+  // Asegurar que el directorio de destino existe
   try {
-    await FileSystem.copyAsync({ from: rawUri, to: targetPath });
-    const stats = await FileSystem.getInfoAsync(targetPath);
-    if (stats.exists && stats.size && stats.size > (isBinary ? 1000 : 0)) return true;
-  } catch (e1) {}
+    const lastSlash = targetPath.lastIndexOf('/');
+    if (lastSlash !== -1) {
+      const parentDir = targetPath.substring(0, lastSlash + 1);
+      const pInfo = await FileSystem.getInfoAsync(parentDir);
+      if (!pInfo.exists) {
+        await FileSystem.makeDirectoryAsync(parentDir, { intermediates: true });
+      }
+    }
+  } catch (dirErr) {}
 
-  // 2. Intentar FileSystem.copyAsync con ruta limpia sin file://
-  try {
-    const rawNoFile = rawUri.replace(/^file:\/\//, '');
-    await FileSystem.copyAsync({ from: rawNoFile, to: targetPath });
-    const stats = await FileSystem.getInfoAsync(targetPath);
-    if (stats.exists && stats.size && stats.size > (isBinary ? 1000 : 0)) return true;
-  } catch (e1b) {}
+  const fromVariants = Array.from(new Set([
+    rawUri,
+    rawUri.replace(/%2540/g, '%40').replace(/%252F/g, '%2F'),
+    rawUri.replace(/^file:\/\//, ''),
+    decodeURI(rawUri),
+  ])).filter(Boolean);
 
-  // 3. Intentar FileSystem.downloadAsync (solo para URLs http/https)
+  const targetVariants = Array.from(new Set([
+    targetPath,
+    targetPath.replace(/%2540/g, '%40').replace(/%252F/g, '%2F'),
+  ])).filter(Boolean);
+
+  // 1. Intentar FileSystem.copyAsync entre variantes
+  for (const fUri of fromVariants) {
+    for (const tUri of targetVariants) {
+      try {
+        await FileSystem.copyAsync({ from: fUri, to: tUri });
+        const stats = await FileSystem.getInfoAsync(tUri);
+        if (stats.exists && stats.size && stats.size > (isBinary ? 1000 : 0)) return true;
+      } catch (e1) {}
+    }
+  }
+
+  // 2. Intentar FileSystem.downloadAsync (solo para URLs http/https)
   if (rawUri.startsWith('http://') || rawUri.startsWith('https://')) {
     try {
       await FileSystem.downloadAsync(rawUri, targetPath);
@@ -121,19 +136,23 @@ export async function copyFileToPermanentStorage(fromUri: string, targetPath: st
     } catch (e1c) {}
   }
 
-  // 4. Intentar lectura en Base64 y escritura permanente
+  // 3. Intentar lectura en Base64 y escritura permanente
   try {
     const base64Data = await readUriAsBase64(rawUri);
     if (base64Data && base64Data.length > (isBinary ? 500 : 0)) {
-      await FileSystem.writeAsStringAsync(targetPath, base64Data, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const stats = await FileSystem.getInfoAsync(targetPath);
-      if (stats.exists && stats.size && stats.size > (isBinary ? 1000 : 0)) return true;
+      for (const tUri of targetVariants) {
+        try {
+          await FileSystem.writeAsStringAsync(tUri, base64Data, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const stats = await FileSystem.getInfoAsync(tUri);
+          if (stats.exists && stats.size && stats.size > (isBinary ? 1000 : 0)) return true;
+        } catch (wErr) {}
+      }
     }
   } catch (e2) {}
 
-  // 5. Fallback con lectura de texto UTF-8 (SOLO para texto plano, NUNCA para binarios PDF/EPUB)
+  // 4. Fallback con lectura de texto UTF-8 (SOLO para texto plano, NUNCA para binarios PDF/EPUB)
   if (!isBinary) {
     try {
       const textData = await readUriAsText(rawUri);
@@ -483,9 +502,29 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
     } catch (e) {}
   }
 
-  // 2. Extraer el nombre base del archivo y buscar en booksDir permanente
+  // 2. Extraer el nombre base del archivo y palabras clave del título
   const rawFileName = filePath.split('/').pop() || '';
   const cleanFileName = rawFileName.replace(/^(\d+_)+/, ''); // Remover TODOS los prefijos timestamp repetidos
+
+  let bookTitle = '';
+  if (bookId) {
+    try {
+      const b = await getBookById(bookId);
+      if (b && b.title) {
+        bookTitle = b.title.trim();
+      }
+    } catch (e) {}
+  }
+
+  const wordsFromTitle = bookTitle
+    ? bookTitle.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, ' ').split(/\s+/).filter(w => w.length >= 3)
+    : [];
+  const wordsFromFile = (cleanFileName || rawFileName)
+    .replace(/\.[^.]+$/, '')
+    .split(/[-_.\s]+/)
+    .filter(w => w.length >= 3 && !/^[0-9a-fA-F-]{8,}$/.test(w));
+
+  const targetWords = Array.from(new Set([...wordsFromTitle, ...wordsFromFile]));
 
   try {
     const booksDir = await ensureBooksDirectoryExists();
@@ -504,15 +543,11 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
 
     // Buscar si el archivo fue renombrado o guardado con timestamp en booksDir
     const dirItems = await FileSystem.readDirectoryAsync(booksDir);
-    const targetWords = (cleanFileName || rawFileName)
-      .replace(/\.[^.]+$/, '')
-      .split(/[-_.\s]+/)
-      .filter(w => w.length >= 3);
 
     for (const item of dirItems) {
       const cleanItem = item.toLowerCase();
       const cleanTarget = (cleanFileName || rawFileName).toLowerCase();
-      const matchesTargetWords = targetWords.length > 0 && targetWords.slice(0, 3).every(w => cleanItem.includes(w.toLowerCase()));
+      const matchesTargetWords = targetWords.length > 0 && targetWords.slice(0, 3).some(w => cleanItem.includes(w.toLowerCase()));
       if (cleanItem.includes(cleanTarget) || cleanTarget.includes(cleanItem) || matchesTargetWords) {
         const matchedPath = booksDir + item;
         const valid = await isValidFileOnDisk(matchedPath, isBinary);
@@ -534,11 +569,6 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
     FileSystem.cacheDirectory || '',
   ];
 
-  const extTargetWords = (cleanFileName || rawFileName)
-    .replace(/\.[^.]+$/, '')
-    .split(/[-_.\s]+/)
-    .filter(w => w.length >= 3);
-
   for (const sDir of searchDirs) {
     if (!sDir) continue;
     try {
@@ -547,7 +577,7 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
       const sItems = await FileSystem.readDirectoryAsync(sDir);
       for (const sItem of sItems) {
         const lowerItem = sItem.toLowerCase();
-        const matchesWords = extTargetWords.length > 0 && extTargetWords.slice(0, 3).every(w => lowerItem.includes(w.toLowerCase()));
+        const matchesWords = targetWords.length > 0 && targetWords.slice(0, 3).some(w => lowerItem.includes(w.toLowerCase()));
         if (matchesWords || lowerItem.includes((cleanFileName || rawFileName).toLowerCase())) {
           const externalPath = sDir.endsWith('/') ? `${sDir}${sItem}` : `${sDir}/${sItem}`;
           const valid = await isValidFileOnDisk(externalPath, isBinary);
@@ -557,9 +587,8 @@ export async function resolveAndHealBookPath(filePath: string, bookId?: string):
               const booksDir = await ensureBooksDirectoryExists();
               const cleanItemName = sItem.replace(/^(\d+_)+/, '').replace(/[^a-zA-Z0-9._-]/g, '_');
               const permPath = `${booksDir}${Date.now()}_${cleanItemName}`;
-              await FileSystem.copyAsync({ from: externalPath, to: permPath });
-              const pValid = await isValidFileOnDisk(permPath, isBinary);
-              if (pValid) {
+              const copied = await copyFileToPermanentStorage(externalPath, permPath);
+              if (copied) {
                 if (bookId) {
                   try { await updateBookFilePath(bookId, permPath); } catch (dbErr) {}
                 }
