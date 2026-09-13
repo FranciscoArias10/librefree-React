@@ -86,6 +86,19 @@ async function runTestSuite() {
     'PdfReaderHTML supports chunked Base64 streaming for large PDF files (>2MB)'
   );
 
+  const pdfScriptRegex = /<script>([\s\S]*?)<\/script>/gi;
+  let pdfScriptMatch;
+  let pdfScriptsValid = true;
+  while ((pdfScriptMatch = pdfScriptRegex.exec(pdfHtml)) !== null) {
+    try {
+      new Function(pdfScriptMatch[1]);
+    } catch (e) {
+      pdfScriptsValid = false;
+      console.error('PDF script syntax error in test:', e);
+    }
+  }
+  assert(pdfScriptsValid, 'PdfReaderHTML embedded scripts are 100% syntactically valid JavaScript');
+
   // TEST SUITE 3: EPUB READER HTML GENERATOR
   console.log('\n📘 [SUITE 3] EPUB Reader Engine Verification');
 
@@ -112,6 +125,19 @@ async function runTestSuite() {
     'EpubReaderHTML passes valid string href parameters to rendition.display'
   );
 
+  const epubScriptRegex = /<script>([\s\S]*?)<\/script>/gi;
+  let epubScriptMatch;
+  let epubScriptsValid = true;
+  while ((epubScriptMatch = epubScriptRegex.exec(epubHtml)) !== null) {
+    try {
+      new Function(epubScriptMatch[1]);
+    } catch (e) {
+      epubScriptsValid = false;
+      console.error('EPUB script syntax error in test:', e);
+    }
+  }
+  assert(epubScriptsValid, 'EpubReaderHTML embedded scripts are 100% syntactically valid JavaScript');
+
   // TEST SUITE 4: TXT READER HTML GENERATOR
   console.log('\n📝 [SUITE 4] TXT Reader Engine Verification');
 
@@ -125,6 +151,19 @@ async function runTestSuite() {
     txtHtml.includes("window.addEventListener('message'"),
     'TxtReaderHTML includes window.addEventListener("message") for iOS compatibility'
   );
+
+  const txtScriptRegex = /<script>([\s\S]*?)<\/script>/gi;
+  let txtScriptMatch;
+  let txtScriptsValid = true;
+  while ((txtScriptMatch = txtScriptRegex.exec(txtHtml)) !== null) {
+    try {
+      new Function(txtScriptMatch[1]);
+    } catch (e) {
+      txtScriptsValid = false;
+      console.error('TXT script syntax error in test:', e);
+    }
+  }
+  assert(txtScriptsValid, 'TxtReaderHTML embedded scripts are 100% syntactically valid JavaScript');
 
   // TEST SUITE 5: TOP PROGRESS SCRUBBER MATH
   console.log('\n🎛️ [SUITE 5] Top Scrubber Progress Math Verification');

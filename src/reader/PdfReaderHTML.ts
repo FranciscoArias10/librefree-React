@@ -1,6 +1,7 @@
 import { ReadingSettings } from '../types/book';
 import { getThemeColors } from './EpubReaderHTML';
 import { PDF_JS_CODE } from './libs/pdfjsBundled';
+import { PDF_WORKER_JS_CODE } from './libs/pdfjsWorkerBundled';
 
 export function getPdfReaderHTML(
   pdfUriOrBase64: string,
@@ -32,6 +33,7 @@ export function getPdfReaderHTML(
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
   <title>PDF Reader - Ultra HD Retina</title>
   <script>${PDF_JS_CODE}</script>
+  <script>${PDF_WORKER_JS_CODE}</script>
   <script>
     if (typeof pdfjsLib === 'undefined' && typeof window.pdfjsLib === 'undefined') {
       document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\\/script>');
@@ -132,7 +134,7 @@ export function getPdfReaderHTML(
 
   <script>
     (function() {
-      if (window.pdfjsLib) {
+      if (window.pdfjsLib && typeof window.pdfjsWorker === 'undefined') {
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       }
 
@@ -259,9 +261,9 @@ export function getPdfReaderHTML(
       // Al arrastrar rápido el marcador en PDF, si una página estaba renderizándose (isRendering = true),
       // los nuevos saltos se descartaban. Con esta cola, al terminar el renderizado actual se dibuja
       // automáticamente la última página solicitada por el usuario.
-      var pendingPageToRender: number | null = null;
+      var pendingPageToRender = null;
 
-      async function renderPage(pageNum: number) {
+      async function renderPage(pageNum) {
         if (!pdfDoc || pageNum < 1 || pageNum > totalPages) return;
         if (isRendering) {
           pendingPageToRender = pageNum;
@@ -272,29 +274,33 @@ export function getPdfReaderHTML(
         resetZoom();
 
         try {
-          var mainCanvas = document.getElementById('pdf-canvas') as HTMLCanvasElement;
-          var mainContext = mainCanvas.getContext('2d')!;
+          var mainCanvas = document.getElementById('pdf-canvas');
+          var mainContext = mainCanvas ? mainCanvas.getContext('2d') : null;
 
           if (pageCanvasCache[pageNum]) {
             var cached = pageCanvasCache[pageNum];
-            mainCanvas.width = cached.width;
-            mainCanvas.height = cached.height;
-            mainCanvas.style.width = cached.style.width;
-            mainCanvas.style.height = cached.style.height;
+            if (mainCanvas && mainContext) {
+              mainCanvas.width = cached.width;
+              mainCanvas.height = cached.height;
+              mainCanvas.style.width = cached.style.width;
+              mainCanvas.style.height = cached.style.height;
 
-            mainContext.imageSmoothingEnabled = true;
-            mainContext.imageSmoothingQuality = 'high';
-            mainContext.drawImage(cached, 0, 0);
+              mainContext.imageSmoothingEnabled = true;
+              mainContext.imageSmoothingQuality = 'high';
+              mainContext.drawImage(cached, 0, 0);
+            }
             var card = document.getElementById('card-container');
             if (card) {
               card.style.backgroundColor = '#FFFFFF';
               card.style.visibility = 'visible';
             }
-            document.getElementById('loading')!.style.display = 'none';
+            var loadEl = document.getElementById('loading');
+            if (loadEl) loadEl.style.display = 'none';
           } else {
-            document.getElementById('loading')!.style.display = 'block';
+            var loadEl = document.getElementById('loading');
+            if (loadEl) loadEl.style.display = 'block';
             var rendered = await renderPageToCanvas(pageNum);
-            if (rendered) {
+            if (rendered && mainCanvas && mainContext) {
               mainCanvas.width = rendered.width;
               mainCanvas.height = rendered.height;
               mainCanvas.style.width = rendered.style.width;
@@ -309,14 +315,15 @@ export function getPdfReaderHTML(
                 card.style.visibility = 'visible';
               }
             }
-            document.getElementById('loading')!.style.display = 'none';
+            var loadEl = document.getElementById('loading');
+            if (loadEl) loadEl.style.display = 'none';
           }
 
           // Extract readable text of current page for TTS
           try {
             var currPageObj = await pdfDoc.getPage(pageNum);
             var textContent = await currPageObj.getTextContent();
-            var pageText = textContent.items.map(function(item: any) { return item.str; }).join(' ');
+            var pageText = textContent.items.map(function(item) { return item.str; }).join(' ');
             sendToRN("PAGE_TEXT_EXTRACTED", { page: pageNum, text: pageText });
           } catch(e) {}
 
@@ -327,7 +334,7 @@ export function getPdfReaderHTML(
             chapter: "Página " + pageNum + " de " + totalPages
           });
 
-          if (pageNum === 1) {
+          if (pageNum === 1 && mainCanvas) {
             try {
               var coverDataUrl = mainCanvas.toDataURL('image/jpeg', 0.75);
               sendToRN("COVER_GENERATED", { coverPath: coverDataUrl });
@@ -520,7 +527,7 @@ export function getPdfReaderHTML(
       var incomingChunks = [];
       var expectedChunks = 0;
 
-      function handleMessage(event: any) {
+      function handleMessage(event) {
         try {
           var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
           if (!data) return;

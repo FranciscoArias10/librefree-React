@@ -483,7 +483,7 @@ export function getEpubReaderHTML(
       var incomingChunks = [];
       var expectedChunks = 0;
 
-      function handleMessage(event: any) {
+      function handleMessage(event) {
         try {
           var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
           if (!data) return;
