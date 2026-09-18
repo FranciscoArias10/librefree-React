@@ -252,6 +252,47 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return base64;
 }
 
+async function readUriViaFetch(uri: string): Promise<string> {
+  try {
+    if (typeof fetch === 'undefined') return '';
+    const response = await fetch(uri);
+    if (!response.ok && response.status !== 0 && response.status !== 200) {
+      return '';
+    }
+
+    try {
+      const arrayBuffer = await response.arrayBuffer();
+      if (arrayBuffer && arrayBuffer.byteLength > 0) {
+        return arrayBufferToBase64(arrayBuffer);
+      }
+    } catch (eBuf) {}
+
+    try {
+      const blob = await response.blob();
+      if (blob && typeof FileReader !== 'undefined') {
+        const b64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const res = reader.result;
+            if (typeof res === 'string') {
+              resolve(res.includes(',') ? res.split(',')[1] : res);
+            } else {
+              resolve('');
+            }
+          };
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(blob);
+        });
+        if (b64 && b64.length > 0) return b64;
+      }
+    } catch (eBlob) {}
+
+    return '';
+  } catch (e) {
+    return '';
+  }
+}
+
 function readUriWithXHR(uri: string): Promise<string> {
   return new Promise((resolve, reject) => {
     try {
@@ -298,6 +339,7 @@ export async function readUriAsBase64(uri: string): Promise<string> {
 
   let lastError: any = null;
 
+  // 1. Intentar FileSystem.readAsStringAsync con todas las variantes
   for (const cUri of candidates) {
     try {
       const data = await FileSystem.readAsStringAsync(cUri, {
@@ -309,7 +351,17 @@ export async function readUriAsBase64(uri: string): Promise<string> {
     }
   }
 
-  // Fallback con XMLHttpRequest
+  // 2. Intentar fetch (soporta URIs fuera del sandbox de Expo Go, DocumentPicker y content://)
+  for (const cUri of [normalized, uri, decodeURI(normalized)]) {
+    try {
+      const data = await readUriViaFetch(cUri);
+      if (data && data.length > 0) return data;
+    } catch (fetchErr: any) {
+      lastError = fetchErr;
+    }
+  }
+
+  // 3. Fallback con XMLHttpRequest
   for (const cUri of [normalized, uri, decodeURI(normalized)]) {
     try {
       const data = await readUriWithXHR(cUri);
@@ -319,7 +371,8 @@ export async function readUriAsBase64(uri: string): Promise<string> {
     }
   }
 
-  throw new Error(`No se pudo leer URI como Base64: ${lastError?.message || lastError || uri}`);
+  const errDetail = lastError?.message || (typeof lastError === 'object' ? JSON.stringify(lastError) : String(lastError));
+  throw new Error(`No se pudo leer URI como Base64: ${errDetail || uri}`);
 }
 
 export async function readUriAsText(uri: string): Promise<string> {
@@ -345,17 +398,25 @@ export async function readUriAsText(uri: string): Promise<string> {
 }
 
 export async function ensureBooksDirectoryExists(): Promise<string> {
-  const docDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
-  const booksDir = docDir.endsWith('/') ? docDir + 'books/' : docDir + '/books/';
-  try {
-    const dirInfo = await FileSystem.getInfoAsync(booksDir);
-    if (!dirInfo.exists) {
-      await FileSystem.makeDirectoryAsync(booksDir, { intermediates: true });
-    }
-    return booksDir;
-  } catch (e) {
-    return booksDir;
+  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
+  if (!baseDir) return '';
+
+  const candidates = Array.from(new Set([
+    baseDir.endsWith('/') ? baseDir + 'books/' : baseDir + '/books/',
+    (baseDir.endsWith('/') ? baseDir + 'books/' : baseDir + '/books/').replace(/%2540/g, '%40').replace(/%252F/g, '%2F'),
+  ]));
+
+  for (const bDir of candidates) {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(bDir);
+      if (dirInfo.exists) return bDir;
+      await FileSystem.makeDirectoryAsync(bDir, { intermediates: true });
+      const verify = await FileSystem.getInfoAsync(bDir);
+      if (verify.exists) return bDir;
+    } catch (e) {}
   }
+
+  return candidates[0];
 }
 
 export async function bulkImportBooks(filesToImport: ScannedFile[]): Promise<Book[]> {
@@ -637,6 +698,18 @@ export async function readBookContent(filePath: string, format: BookFormat, book
         const base64Data = await readUriAsBase64(healedPath);
         if (base64Data && base64Data.length > 20) {
           console.log(`[readBookContent] Éxito leyendo Base64 desde healedPath (${Math.round(base64Data.length / 1024)} KB)`);
+          if (healedPath.includes('/cache/') || healedPath.includes('DocumentPicker')) {
+            ensureBooksDirectoryExists().then(async (booksDir) => {
+              if (booksDir) {
+                const cleanBase = healedPath.split('/').pop()?.replace(/^(\d+_)+/, '') || 'book.pdf';
+                const permPath = `${booksDir}${Date.now()}_${cleanBase.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                await FileSystem.writeAsStringAsync(permPath, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+                if (bookId) {
+                  await updateBookFilePath(bookId, permPath);
+                }
+              }
+            }).catch(() => {});
+          }
           return { content: base64Data, isBase64: true };
         }
       } catch (err: any) {
@@ -649,6 +722,18 @@ export async function readBookContent(filePath: string, format: BookFormat, book
           const base64Original = await readUriAsBase64(filePath);
           if (base64Original && base64Original.length > 20) {
             console.log(`[readBookContent] Éxito leyendo Base64 desde filePath original (${Math.round(base64Original.length / 1024)} KB)`);
+            if (filePath.includes('/cache/') || filePath.includes('DocumentPicker')) {
+              ensureBooksDirectoryExists().then(async (booksDir) => {
+                if (booksDir) {
+                  const cleanBase = filePath.split('/').pop()?.replace(/^(\d+_)+/, '') || 'book.pdf';
+                  const permPath = `${booksDir}${Date.now()}_${cleanBase.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                  await FileSystem.writeAsStringAsync(permPath, base64Original, { encoding: FileSystem.EncodingType.Base64 });
+                  if (bookId) {
+                    await updateBookFilePath(bookId, permPath);
+                  }
+                }
+              }).catch(() => {});
+            }
             return { content: base64Original, isBase64: true };
           }
         } catch (err2: any) {
