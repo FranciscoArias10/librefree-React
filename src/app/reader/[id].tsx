@@ -298,8 +298,7 @@ export default function ReaderScreen() {
           updateBookProgress(book.id, newProgress, newCfi, newChapter);
         }
       } else if (data.type === 'INIT_READY') {
-        isWebViewReadyRef.current = true;
-        sendBookDataToWebView();
+        // WebView inicializado y listo con HTML embebido directamente
       } else if (data.type === 'COVER_GENERATED') {
         const { coverPath } = data.payload;
         if (book && coverPath && coverPath.length > 50) {
@@ -409,13 +408,13 @@ export default function ReaderScreen() {
   if (!loading && (!bookData.content || bookData.content.length === 0)) {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-        <View style={{ backgroundColor: theme.card, padding: 28, borderRadius: 20, width: '100%', maxWidth: 440, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 5 }}>
+        <View style={{ backgroundColor: theme.bgCard, padding: 28, borderRadius: 20, width: '100%', maxWidth: 440, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 5 }}>
           <Text style={{ fontSize: 48, marginBottom: 16 }}>⚠️</Text>
-          <Text style={{ fontSize: 20, fontWeight: 'bold', color: theme.text, textAlign: 'center', marginBottom: 10 }}>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: theme.textPrimary, textAlign: 'center', marginBottom: 10 }}>
             Archivo no disponible
           </Text>
           <Text style={{ fontSize: 14, color: theme.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 24 }}>
-            El archivo de <Text style={{ fontWeight: 'bold', color: theme.text }}>"{book.title}"</Text> estaba en una carpeta temporal y el sistema lo eliminó para liberar espacio.
+            El archivo de <Text style={{ fontWeight: 'bold', color: theme.textPrimary }}>"{book.title}"</Text> estaba en una carpeta temporal y el sistema lo eliminó para liberar espacio.
             {'\n\n'}
             Pulsa el botón para seleccionarlo de nuevo desde tus descargas o archivos y se guardará de forma permanente en LibreFree.
           </Text>

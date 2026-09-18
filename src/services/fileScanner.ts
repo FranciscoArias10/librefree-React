@@ -52,6 +52,7 @@ export async function autoScanDeviceDirectories(
 
         try {
           const itemInfo = await FileSystem.getInfoAsync(itemUri);
+          if (!itemInfo.exists) continue;
           if (itemInfo.isDirectory) {
             await scanFolder(itemUri, depth + 1);
           } else {
