@@ -108,22 +108,23 @@ export async function copyFileToPermanentStorage(fromUri: string, targetPath: st
   const fromVariants = Array.from(new Set([
     rawUri,
     rawUri.replace(/%2540/g, '%40').replace(/%252F/g, '%2F'),
-    rawUri.replace(/^file:\/\//, ''),
+    rawUri.replace(/%2540/g, '@').replace(/%252F/g, '/'),
     decodeURI(rawUri),
-  ])).filter(Boolean);
+  ])).filter((v) => v.startsWith('file://') || v.startsWith('content://'));
 
   const targetVariants = Array.from(new Set([
     targetPath,
     targetPath.replace(/%2540/g, '%40').replace(/%252F/g, '%2F'),
-  ])).filter(Boolean);
+    targetPath.replace(/%2540/g, '@').replace(/%252F/g, '/'),
+  ])).filter((v) => v.startsWith('file://'));
 
-  // 1. Intentar FileSystem.copyAsync entre variantes
+  // 1. Intentar FileSystem.copyAsync entre variantes válidas
   for (const fUri of fromVariants) {
     for (const tUri of targetVariants) {
       try {
         await FileSystem.copyAsync({ from: fUri, to: tUri });
         const stats = await FileSystem.getInfoAsync(tUri);
-        if (stats.exists) return true;
+        if (stats.exists && (stats.size === undefined || stats.size > 0)) return true;
       } catch (e1) {}
     }
   }
@@ -147,7 +148,7 @@ export async function copyFileToPermanentStorage(fromUri: string, targetPath: st
             encoding: FileSystem.EncodingType.Base64,
           });
           const stats = await FileSystem.getInfoAsync(tUri);
-          if (stats.exists) return true;
+          if (stats.exists && (stats.size === undefined || stats.size > 0)) return true;
         } catch (wErr) {}
       }
     }
@@ -397,26 +398,69 @@ export async function readUriAsText(uri: string): Promise<string> {
   return '';
 }
 
+export async function extractEpubCoverNative(base64Data: string): Promise<string | null> {
+  try {
+    const cleanB64 = base64Data.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+    const zip = await JSZip.loadAsync(cleanB64, { base64: true });
+    const imageFiles = Object.keys(zip.files).filter((name) =>
+      /\.(jpe?g|png|webp)$/i.test(name) && !name.includes('MACOSX')
+    );
+
+    if (imageFiles.length === 0) return null;
+
+    // Prioritize files named cover or portada
+    const coverFile =
+      imageFiles.find((name) => /cover/i.test(name)) ||
+      imageFiles.find((name) => /portada/i.test(name)) ||
+      imageFiles[0];
+
+    if (coverFile) {
+      const ext = coverFile.split('.').pop()?.toLowerCase() || 'jpeg';
+      const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      const imgBase64 = await zip.files[coverFile].async('base64');
+      if (imgBase64 && imgBase64.length > 50) {
+        return `data:${mime};base64,${imgBase64}`;
+      }
+    }
+    return null;
+  } catch (err) {
+    return null;
+  }
+}
+
 export async function ensureBooksDirectoryExists(): Promise<string> {
-  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
-  if (!baseDir) return '';
+  const docDir = FileSystem.documentDirectory || '';
+  const cacheDir = FileSystem.cacheDirectory || '';
 
-  const candidates = Array.from(new Set([
-    baseDir.endsWith('/') ? baseDir + 'books/' : baseDir + '/books/',
-    (baseDir.endsWith('/') ? baseDir + 'books/' : baseDir + '/books/').replace(/%2540/g, '%40').replace(/%252F/g, '%2F'),
-  ]));
+  const candidates: string[] = [];
 
-  for (const bDir of candidates) {
+  for (const base of [docDir, cacheDir]) {
+    if (!base) continue;
+    const cleanBase = base.endsWith('/') ? base : base + '/';
+    candidates.push(cleanBase + 'books/');
+    candidates.push(cleanBase.replace(/%2540/g, '%40').replace(/%252F/g, '%2F') + 'books/');
+    candidates.push(cleanBase.replace(/%2540/g, '@').replace(/%252F/g, '/').replace(/%40/g, '@').replace(/%2F/g, '/') + 'books/');
+  }
+
+  const uniqueCandidates = Array.from(new Set(candidates)).filter(Boolean);
+
+  for (const bDir of uniqueCandidates) {
     try {
       const dirInfo = await FileSystem.getInfoAsync(bDir);
-      if (dirInfo.exists) return bDir;
-      await FileSystem.makeDirectoryAsync(bDir, { intermediates: true });
-      const verify = await FileSystem.getInfoAsync(bDir);
-      if (verify.exists) return bDir;
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(bDir, { intermediates: true });
+      }
+      const testFile = `${bDir}.write_test_${Date.now()}`;
+      await FileSystem.writeAsStringAsync(testFile, '1');
+      const verify = await FileSystem.getInfoAsync(testFile);
+      if (verify.exists) {
+        await FileSystem.deleteAsync(testFile, { idempotent: true });
+        return bDir;
+      }
     } catch (e) {}
   }
 
-  return candidates[0];
+  return uniqueCandidates[0] || (docDir ? docDir + 'books/' : '');
 }
 
 export async function bulkImportBooks(filesToImport: ScannedFile[]): Promise<Book[]> {
@@ -431,8 +475,38 @@ export async function bulkImportBooks(filesToImport: ScannedFile[]): Promise<Boo
 
       const copied = await copyFileToPermanentStorage(rawUri, targetPath);
       let finalFilePath = copied ? targetPath : rawUri;
+
+      if (!copied) {
+        try {
+          const b64 = await readUriAsBase64(rawUri);
+          if (b64 && b64.length > 20) {
+            await FileSystem.writeAsStringAsync(targetPath, b64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            const verify = await FileSystem.getInfoAsync(targetPath);
+            if (verify.exists && (verify.size === undefined || verify.size > 0)) {
+              finalFilePath = targetPath;
+            }
+          }
+        } catch (eFallback) {}
+      }
+
       let fileStats = await FileSystem.getInfoAsync(finalFilePath);
       let finalSize = (fileStats.exists && fileStats.size) ? fileStats.size : (item.size || 0);
+
+      // Extraer portada de EPUB nativamente al importar para presentación visual inmediata
+      let initialCover = item.coverPath || undefined;
+      if (!initialCover && item.format === 'EPUB') {
+        try {
+          const b64 = await readUriAsBase64(finalFilePath);
+          if (b64 && b64.length > 50) {
+            const extracted = await extractEpubCoverNative(b64);
+            if (extracted) {
+              initialCover = extracted;
+            }
+          }
+        } catch (eCov) {}
+      }
 
       const titleWithoutExt = item.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
       let title = titleWithoutExt;
@@ -449,7 +523,7 @@ export async function bulkImportBooks(filesToImport: ScannedFile[]): Promise<Boo
         author,
         format: item.format,
         filePath: finalFilePath,
-        coverPath: item.coverPath || undefined,
+        coverPath: initialCover,
         fileSize: finalSize,
         progressPercentage: 0,
         favorite: false,
@@ -501,8 +575,37 @@ export async function importBookFromDevice(): Promise<Book | null> {
 
     const copied = await copyFileToPermanentStorage(rawUri, targetPath);
     let finalFilePath = copied ? targetPath : rawUri;
+
+    if (!copied) {
+      try {
+        const b64 = await readUriAsBase64(rawUri);
+        if (b64 && b64.length > 20) {
+          await FileSystem.writeAsStringAsync(targetPath, b64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const verify = await FileSystem.getInfoAsync(targetPath);
+          if (verify.exists && (verify.size === undefined || verify.size > 0)) {
+            finalFilePath = targetPath;
+          }
+        }
+      } catch (eFallback) {}
+    }
+
     let fileStats = await FileSystem.getInfoAsync(finalFilePath);
     let finalSize = (fileStats.exists && fileStats.size) ? fileStats.size : (asset.size || 0);
+
+    let initialCover: string | undefined = undefined;
+    if (format === 'EPUB') {
+      try {
+        const b64 = await readUriAsBase64(finalFilePath);
+        if (b64 && b64.length > 50) {
+          const extracted = await extractEpubCoverNative(b64);
+          if (extracted) {
+            initialCover = extracted;
+          }
+        }
+      } catch (eCov) {}
+    }
 
     const titleWithoutExt = fileName.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
     let title = titleWithoutExt;
@@ -519,6 +622,7 @@ export async function importBookFromDevice(): Promise<Book | null> {
       author,
       format,
       filePath: finalFilePath,
+      coverPath: initialCover,
       fileSize: finalSize,
       progressPercentage: 0,
       favorite: false,

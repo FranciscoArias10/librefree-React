@@ -23,8 +23,7 @@ export function getEpubReaderHTML(
   progressPercentage: number = 0
 ): string {
   const colors = getThemeColors(settings.themeMode);
-  const isLargePayload = fileUriOrBase64.length > 300000;
-  const rawData = JSON.stringify(isLargePayload ? "" : fileUriOrBase64);
+  const rawData = JSON.stringify(fileUriOrBase64);
   const initialLoc = JSON.stringify(initialCfi || '1');
   const savedProgressPct = progressPercentage || 0;
 

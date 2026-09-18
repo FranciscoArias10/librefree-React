@@ -24,7 +24,7 @@ const DEFAULT_SETTINGS: ReadingSettings = {
   isContinuousScroll: false,
 };
 
-export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void }> = ({ onCoverGenerated }) => {
+export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void; triggerKey?: number }> = ({ onCoverGenerated, triggerKey }) => {
   const [currentBook, setCurrentBook] = useState<ProcessingBook | null>(null);
   const [htmlSource, setHtmlSource] = useState<string | null>(null);
   const webViewRef = useRef<WebView>(null);
@@ -52,9 +52,9 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
       const row = await db.getFirstAsync<any>(
         `SELECT b.id, b.filePath, b.format 
          FROM books b 
-         LEFT JOIN book_texts bt ON b.id = bt.bookId 
-         WHERE (b.coverPath IS NULL OR b.coverPath = '' OR length(b.coverPath) < 50 OR bt.extractedText IS NULL) 
+         WHERE (b.coverPath IS NULL OR b.coverPath = '' OR length(b.coverPath) < 50) 
          AND (b.format = 'PDF' OR b.format = 'EPUB') 
+         ORDER BY b.id DESC 
          LIMIT 1;`
       );
 
@@ -65,18 +65,16 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
 
         isProcessingRef.current = true;
 
-        // Set timeout to prevent getting stuck indefinitely on a corrupted book
+        // Set timeout to prevent getting stuck indefinitely on a problematic book
         timeoutRef.current = setTimeout(() => {
-          console.log(`[BackgroundCoverProcessor] Timeout procesando portada/texto para libro ${row.id}`);
+          console.log(`[BackgroundCoverProcessor] Timeout procesando portada para libro ${row.id}`);
           failedBookIdsRef.current.add(row.id);
           clearCurrentJob();
-        }, 15000);
+        }, 12000);
 
         const data = await readBookContent(row.filePath, row.format, row.id);
-        const isCorruptPdf = row.format === 'PDF' && data.content && data.content.length < 5000 && !data.content.startsWith('JVBER');
-        const isCorruptEpub = row.format === 'EPUB' && data.content && data.content.length < 5000 && !data.content.startsWith('UEs');
 
-        if (data.content && data.content.length > 50 && !isCorruptPdf && !isCorruptEpub) {
+        if (data.content && data.content.length > 20) {
           setCurrentBook({ id: row.id, filePath: row.filePath, format: row.format });
           if (row.format === 'PDF') {
             setHtmlSource(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, true));
@@ -91,14 +89,18 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
         clearCurrentJob();
       }
     } catch (err) {
-      console.error('Error en procesador de portadas y texto en segundo plano:', err);
+      console.error('Error en procesador de portadas en segundo plano:', err);
       clearCurrentJob();
     }
   };
 
   useEffect(() => {
     checkPendingBooks();
-    const interval = setInterval(checkPendingBooks, 4000);
+  }, [triggerKey]);
+
+  useEffect(() => {
+    checkPendingBooks();
+    const interval = setInterval(checkPendingBooks, 2000);
     return () => {
       clearInterval(interval);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -114,14 +116,12 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void 
           await saveBookCover(currentBook.id, coverPath);
           if (onCoverGenerated) onCoverGenerated();
           clearCurrentJob();
-          setTimeout(checkPendingBooks, 200);
+          setTimeout(checkPendingBooks, 100);
         }
       } else if ((data.type === 'FULL_PDF_TEXT' || data.type === 'FULL_EPUB_TEXT') && currentBook && data.payload?.text) {
         const text = data.payload.text;
         if (text.length > 20) {
           await saveExtractedBookText(currentBook.id, text);
-          clearCurrentJob();
-          setTimeout(checkPendingBooks, 200);
         }
       }
     } catch (e) {

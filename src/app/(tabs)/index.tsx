@@ -41,6 +41,7 @@ export default function BookshelfScreen() {
     message: '',
     type: 'success',
   });
+  const [coverTrigger, setCoverTrigger] = useState<number>(0);
 
   useEffect(() => {
     async function loadLayout() {
@@ -172,6 +173,7 @@ export default function BookshelfScreen() {
           type: 'success',
         });
         fetchBooks();
+        setCoverTrigger((prev) => prev + 1);
       }
     } catch (err) {
       setToast({
@@ -211,7 +213,7 @@ export default function BookshelfScreen() {
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: theme.bg }, { paddingTop: androidStatusBarPadding }]}>
       {/* Background Cover Processor Component */}
-      <BackgroundCoverProcessor onCoverGenerated={fetchBooks} />
+      <BackgroundCoverProcessor onCoverGenerated={fetchBooks} triggerKey={coverTrigger} />
 
       <Toast
         visible={toast.visible}

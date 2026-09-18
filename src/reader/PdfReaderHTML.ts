@@ -10,8 +10,7 @@ export function getPdfReaderHTML(
   onlyFirstPageMode: boolean = false
 ): string {
   const colors = getThemeColors(settings.themeMode);
-  const isLargePayload = pdfUriOrBase64.length > 300000;
-  const rawData = JSON.stringify(isLargePayload ? "" : pdfUriOrBase64);
+  const rawData = JSON.stringify(pdfUriOrBase64);
   const initialPage = parseInt(initialPageStr || '1', 10) || 1;
   const isBase64 = pdfUriOrBase64.length > 1000 && !pdfUriOrBase64.startsWith('file://') && !pdfUriOrBase64.startsWith('http');
 
