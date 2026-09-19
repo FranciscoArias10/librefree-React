@@ -9,6 +9,8 @@ import {
   StatusBar,
   Platform,
   PanResponder,
+  GestureResponderEvent,
+  PanResponderGestureState,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
@@ -44,88 +46,103 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
   onSeek,
 }) => {
   const trackRef = useRef<View>(null);
-  const [trackWidth, setTrackWidth] = useState(0);
-  const [trackPageX, setTrackPageX] = useState(0);
+  const trackWidthRef = useRef(0);
+  const trackPageXRef = useRef(0);
+  const isDraggingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragPercent, setDragPercent] = useState(progress);
-  const initialPctRef = useRef(progress);
+  const startPctRef = useRef(progress);
+  const onSeekRef = useRef(onSeek);
+  onSeekRef.current = onSeek;
   const lastSeekTimeRef = useRef(0);
 
   useEffect(() => {
-    if (!isDragging) {
+    if (!isDraggingRef.current) {
       setDragPercent(progress);
+      startPctRef.current = progress;
     }
-  }, [progress, isDragging]);
+  }, [progress]);
 
-  const emitThrottledSeek = (pct: number, force: boolean = false) => {
+  const emitSeek = (pct: number, force: boolean = false) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
     const now = Date.now();
-    if (force || now - lastSeekTimeRef.current > 60) {
+    if (force || now - lastSeekTimeRef.current > 40) {
       lastSeekTimeRef.current = now;
-      onSeek(pct);
+      onSeekRef.current(clamped);
     }
   };
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => false,
-      onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => false,
-      onPanResponderGrant: (evt, gestureState) => {
-        setIsDragging(true);
-        initialPctRef.current = dragPercent;
+  const calcPercent = (evt: GestureResponderEvent, gestureState?: PanResponderGestureState): number => {
+    const w = trackWidthRef.current;
+    if (w <= 0) return startPctRef.current;
 
-        const touchX = evt.nativeEvent.pageX;
-        if (trackWidth > 0 && trackPageX > 0) {
-          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
-          const tapPct = Math.max(0, Math.min(100, Math.round((relX / trackWidth) * 100)));
-          initialPctRef.current = tapPct;
-          setDragPercent(tapPct);
-          emitThrottledSeek(tapPct, true);
-        } else {
-          emitThrottledSeek(dragPercent, true);
-        }
+    // Use pageX if trackPageXRef has been measured
+    if (trackPageXRef.current > 0 && evt.nativeEvent.pageX !== undefined) {
+      const relX = Math.max(0, Math.min(w, evt.nativeEvent.pageX - trackPageXRef.current));
+      return Math.max(0, Math.min(100, Math.round((relX / w) * 100)));
+    }
 
-        if (trackRef.current) {
-          trackRef.current.measureInWindow((x, y, w) => {
-            if (x > 0) setTrackPageX(x);
-            if (w > 0) setTrackWidth(w);
+    // Use gesture delta
+    if (gestureState && gestureState.dx !== undefined && gestureState.dx !== 0) {
+      const deltaPct = (gestureState.dx / w) * 100;
+      return Math.max(0, Math.min(100, Math.round(startPctRef.current + deltaPct)));
+    }
+
+    // Fallback to locationX
+    if (evt.nativeEvent.locationX !== undefined) {
+      const relX = Math.max(0, Math.min(w, evt.nativeEvent.locationX));
+      return Math.max(0, Math.min(100, Math.round((relX / w) * 100)));
+    }
+
+    return startPctRef.current;
+  };
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => false,
+
+        onPanResponderGrant: (evt, gestureState) => {
+          isDraggingRef.current = true;
+          setIsDragging(true);
+
+          trackRef.current?.measureInWindow((x, y, w) => {
+            if (x > 0) trackPageXRef.current = x;
+            if (w > 0) trackWidthRef.current = w;
           });
-        }
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        const touchX = evt.nativeEvent.pageX;
-        let pct = dragPercent;
 
-        if (trackWidth > 0 && trackPageX > 0) {
-          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
-          pct = Math.max(0, Math.min(100, Math.round((relX / trackWidth) * 100)));
-        } else if (trackWidth > 0) {
-          const deltaPct = (gestureState.dx / trackWidth) * 100;
-          pct = Math.max(0, Math.min(100, Math.round(initialPctRef.current + deltaPct)));
-        }
+          const pct = calcPercent(evt, gestureState);
+          startPctRef.current = pct;
+          setDragPercent(pct);
+          emitSeek(pct, true);
+        },
 
-        setDragPercent(pct);
-        emitThrottledSeek(pct, false);
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        setIsDragging(false);
-        const touchX = evt.nativeEvent.pageX;
-        let pct = dragPercent;
+        onPanResponderMove: (evt, gestureState) => {
+          const pct = calcPercent(evt, gestureState);
+          setDragPercent(pct);
+          emitSeek(pct, false);
+        },
 
-        if (trackWidth > 0 && trackPageX > 0) {
-          const relX = Math.max(0, Math.min(trackWidth, touchX - trackPageX));
-          pct = Math.max(0, Math.min(100, Math.round((relX / trackWidth) * 100)));
-        } else if (trackWidth > 0) {
-          const deltaPct = (gestureState.dx / trackWidth) * 100;
-          pct = Math.max(0, Math.min(100, Math.round(initialPctRef.current + deltaPct)));
-        }
+        onPanResponderRelease: (evt, gestureState) => {
+          isDraggingRef.current = false;
+          setIsDragging(false);
 
-        setDragPercent(pct);
-        emitThrottledSeek(pct, true);
-      },
-    })
-  ).current;
+          const pct = calcPercent(evt, gestureState);
+          setDragPercent(pct);
+          startPctRef.current = pct;
+          emitSeek(pct, true);
+        },
+
+        onPanResponderTerminate: () => {
+          isDraggingRef.current = false;
+          setIsDragging(false);
+        },
+      }),
+    []
+  );
 
   const currentPercent = isDragging ? dragPercent : progress;
   const total = totalPages && totalPages > 0 ? totalPages : 350;
@@ -142,17 +159,19 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
     <View
       ref={trackRef}
       style={styles.scrubberWrapper}
+      hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}
       onLayout={(e) => {
         const w = e.nativeEvent.layout.width;
-        if (w > 0) setTrackWidth(w);
+        if (w > 0) trackWidthRef.current = w;
         trackRef.current?.measureInWindow((x, y, width) => {
-          if (x > 0) setTrackPageX(x);
-          if (width > 0) setTrackWidth(width);
+          if (x > 0) trackPageXRef.current = x;
+          if (width > 0) trackWidthRef.current = width;
         });
       }}
       {...panResponder.panHandlers}
     >
       <View
+        pointerEvents="none"
         style={[
           styles.scrubberTrack,
           { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' },
@@ -169,12 +188,12 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
         />
       </View>
 
-      <View style={[styles.scrubberThumb, { left: `${currentPercent}%` }]}>
+      <View pointerEvents="none" style={[styles.scrubberThumb, { left: `${currentPercent}%` }]}>
         <View style={[styles.scrubberThumbInner, { backgroundColor: isDark ? '#60A5FA' : '#2563EB' }]} />
       </View>
 
       {isDragging && (
-        <View style={[styles.tooltipBadge, { left: `${Math.max(16, Math.min(84, currentPercent))}%` }]}>
+        <View pointerEvents="none" style={[styles.tooltipBadge, { left: `${Math.max(16, Math.min(84, currentPercent))}%` }]}>
           <Text style={styles.tooltipText}>Pág. {estimatedPage} de {total} ({currentPercent}%)</Text>
         </View>
       )}
@@ -391,7 +410,7 @@ export default function ReaderScreen() {
       return getEpubReaderHTML(bookData.content, bookData.isBase64, book.currentLocation, settings, book.progressPercentage);
     }
     if (book.format === 'PDF') {
-      return getPdfReaderHTML(bookData.content, book.currentLocation || '1', settings);
+      return getPdfReaderHTML(bookData.content, book.currentLocation || '1', settings, false, bookData.isBase64);
     }
     return getTxtReaderHTML(bookData.content, book.title, settings);
   }, [book?.id, !!bookData.content]);
@@ -720,58 +739,61 @@ const styles = StyleSheet.create({
     height: 48,
   },
   scrubberWrapper: {
-    height: 24,
-    marginHorizontal: 20,
-    marginBottom: 6,
+    height: 32,
+    marginHorizontal: 16,
+    marginBottom: 4,
     justifyContent: 'center',
     position: 'relative',
   },
   scrubberTrack: {
-    height: 4,
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 3,
     width: '100%',
     overflow: 'hidden',
   },
   scrubberFill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 3,
   },
   scrubberThumb: {
     position: 'absolute',
-    top: 3,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    top: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#FFFFFF',
-    marginLeft: -9,
+    marginLeft: -10,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
-    elevation: 4,
+    elevation: 5,
     borderWidth: 1.5,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
+    borderColor: 'rgba(0, 0, 0, 0.08)',
   },
   scrubberThumbInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   tooltipBadge: {
     position: 'absolute',
-    bottom: 26,
+    bottom: 34,
     backgroundColor: 'rgba(15, 23, 42, 0.92)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginLeft: -16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: -45,
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 6,
+    zIndex: 200,
   },
   tooltipText: {
     color: '#FFFFFF',

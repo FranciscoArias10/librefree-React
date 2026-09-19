@@ -7,12 +7,23 @@ export function getPdfReaderHTML(
   pdfUriOrBase64: string,
   initialPageStr: string | undefined,
   settings: ReadingSettings,
-  onlyFirstPageMode: boolean = false
+  onlyFirstPageMode: boolean = false,
+  isBase64Explicit?: boolean
 ): string {
   const colors = getThemeColors(settings.themeMode);
   const rawData = JSON.stringify(pdfUriOrBase64);
   const initialPage = parseInt(initialPageStr || '1', 10) || 1;
-  const isBase64 = pdfUriOrBase64.length > 1000 && !pdfUriOrBase64.startsWith('file://') && !pdfUriOrBase64.startsWith('http');
+  const isBase64 = isBase64Explicit !== undefined
+    ? isBase64Explicit
+    : (
+        pdfUriOrBase64.startsWith('data:') ||
+        pdfUriOrBase64.startsWith('JVBERi') ||
+        (!pdfUriOrBase64.startsWith('file://') &&
+         !pdfUriOrBase64.startsWith('content://') &&
+         !pdfUriOrBase64.startsWith('http://') &&
+         !pdfUriOrBase64.startsWith('https://') &&
+         !pdfUriOrBase64.startsWith('/'))
+      );
 
   const getCanvasFilter = () => {
     if (settings.themeMode === 'dark' || settings.themeMode === 'oled') {
@@ -358,6 +369,7 @@ export function getPdfReaderHTML(
           sendToRN("PROGRESS_UPDATE", {
             progress: progress,
             page: pageNum,
+            totalPages: totalPages,
             chapter: "Página " + pageNum + " de " + totalPages
           });
 
@@ -433,8 +445,17 @@ export function getPdfReaderHTML(
             loadEl.style.display = 'block';
           }
 
+          var actualIsBase64 = isBase64 ||
+            pdfSource.indexOf('data:') === 0 ||
+            pdfSource.indexOf('JVBERi') === 0 ||
+            (!pdfSource.startsWith('file://') &&
+             !pdfSource.startsWith('content://') &&
+             !pdfSource.startsWith('http://') &&
+             !pdfSource.startsWith('https://') &&
+             !pdfSource.startsWith('/'));
+
           var loadingTask;
-          if (isBase64) {
+          if (actualIsBase64) {
             var pdfData = base64ToUint8Array(pdfSource);
             loadingTask = pdfjsLib.getDocument({
               data: pdfData,
@@ -474,12 +495,7 @@ export function getPdfReaderHTML(
           var errBox = document.getElementById('error-box');
           if (errBox) {
             errBox.style.display = 'block';
-            var isDamaged = err && err.message && (err.message.indexOf('Invalid PDF structure') !== -1 || err.message.indexOf('corrupted') !== -1 || err.message.indexOf('missing') !== -1);
-            if (isDamaged) {
-              errBox.innerHTML = "<div style='font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #EF4444;'>⚠️ Estructura PDF Incompleta o Dañada</div><div style='font-size: 14px; opacity: 0.85; line-height: 1.5; color: inherit;'>El archivo almacenado en el teléfono está incompleto o dañado.<br><br>Pulsa el botón para seleccionarlo de nuevo desde tus descargas o archivos.</div><button id='repick-btn' onclick='window.repickFile()' style='margin-top: 18px; padding: 12px 22px; background: #6366F1; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(99,102,241,0.4);'>Re-seleccionar archivo</button>";
-            } else {
-              errBox.innerText = "Error cargando PDF: " + err.message;
-            }
+            errBox.innerHTML = "<div style='font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #EF4444;'>⚠️ Error cargando documento</div><div style='font-size: 14px; opacity: 0.85; line-height: 1.5; color: inherit;'>No se pudo procesar el archivo PDF.<br><br>Pulsa el botón para re-vincularlo.</div><button id='repick-btn' onclick='window.repickFile()' style='margin-top: 18px; padding: 12px 22px; background: #6366F1; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(99,102,241,0.4);'>Re-seleccionar archivo</button>";
           }
         }
       }
