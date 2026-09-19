@@ -65,7 +65,7 @@ export function getPdfReaderHTML(
       font-family: system-ui, -apple-system, sans-serif;
       user-select: none;
       -webkit-user-select: none;
-      touch-action: none;
+      touch-action: pan-x pan-y pinch-zoom;
     }
     #reader-viewport {
       width: 100vw;
@@ -76,6 +76,7 @@ export function getPdfReaderHTML(
       position: relative;
       overflow: hidden;
       padding-bottom: 20px;
+      touch-action: pan-x pan-y pinch-zoom;
     }
     .canvas-card {
       box-shadow: 0 6px 24px rgba(0,0,0,0.3);
@@ -88,6 +89,72 @@ export function getPdfReaderHTML(
       transform-origin: center center;
       will-change: transform;
       visibility: hidden;
+    }
+    .canvas-wrapper {
+      position: relative;
+      display: inline-block;
+      user-select: text !important;
+      -webkit-user-select: text !important;
+    }
+    .textLayer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      opacity: 1;
+      line-height: 1.0;
+      text-size-adjust: none;
+      forced-color-adjust: none;
+      transform-origin: 0 0;
+      z-index: 5;
+      user-select: text !important;
+      -webkit-user-select: text !important;
+      touch-action: auto !important;
+      pointer-events: auto;
+    }
+    .textLayer span,
+    .textLayer br {
+      color: transparent;
+      position: absolute;
+      white-space: pre;
+      cursor: text;
+      transform-origin: 0% 0%;
+      user-select: text !important;
+      -webkit-user-select: text !important;
+      touch-action: auto !important;
+      pointer-events: auto;
+    }
+    .textLayer ::selection {
+      background: rgba(250, 204, 21, 0.45);
+      color: transparent;
+    }
+    .textLayer span[data-highlighted="true"] {
+      background-color: rgba(250, 204, 21, 0.45) !important;
+      border-radius: 2px !important;
+      box-shadow: 0 0 2px rgba(234, 179, 8, 0.6) !important;
+    }
+    #highlight-toolbar {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      background: #0F172A;
+      color: #FFFFFF;
+      border-radius: 28px;
+      padding: 7px 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.2);
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.2);
+      transform: translate(-50%, -100%);
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    #highlight-toolbar:active {
+      transform: translate(-50%, -100%) scale(0.96);
     }
     canvas {
       display: block;
@@ -138,7 +205,17 @@ export function getPdfReaderHTML(
 
   <div id="reader-viewport">
     <div class="canvas-card" id="card-container">
-      <canvas id="pdf-canvas"></canvas>
+      <div class="canvas-wrapper" id="canvas-wrapper">
+        <canvas id="pdf-canvas"></canvas>
+        <div id="text-layer" class="textLayer"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="highlight-toolbar">
+    <div id="btn-highlight" style="display: flex; align-items: center; gap: 7px; user-select: none;">
+      <span style="width: 14px; height: 14px; border-radius: 50%; background: #FACC15; display: inline-block; box-shadow: 0 0 8px #FACC15;"></span>
+      <span>Resaltar</span>
     </div>
   </div>
 
@@ -157,6 +234,7 @@ export function getPdfReaderHTML(
       var isRendering = false;
 
       var pageCanvasCache = {};
+      var pageHighlightsCache = {};
 
       // Persistent Zoom & Pan State
       var currentScale = 1.0;
@@ -357,13 +435,51 @@ export function getPdfReaderHTML(
             if (loadEl) loadEl.style.display = 'none';
           }
 
-          // Extract readable text of current page for TTS
+          // Extract readable text of current page for TTS and render textLayer
+          var currPageObj = null;
+          var textContent = null;
           try {
-            var currPageObj = await pdfDoc.getPage(pageNum);
-            var textContent = await currPageObj.getTextContent();
+            currPageObj = await pdfDoc.getPage(pageNum);
+            textContent = await currPageObj.getTextContent();
             var pageText = textContent.items.map(function(item) { return item.str; }).join(' ');
             sendToRN("PAGE_TEXT_EXTRACTED", { page: pageNum, text: pageText });
           } catch(e) {}
+
+          // Render interactive textLayer for text selection & fluorescent highlighting
+          try {
+            var textLayer = document.getElementById('text-layer');
+            if (textLayer && currPageObj && textContent) {
+              textLayer.innerHTML = '';
+              if (mainCanvas) {
+                textLayer.style.width = mainCanvas.style.width;
+                textLayer.style.height = mainCanvas.style.height;
+              }
+
+              var containerWidth = window.innerWidth * 0.98;
+              var containerHeight = window.innerHeight * 0.86;
+              var unscaledViewport = currPageObj.getViewport({ scale: 1.0 });
+              var scaleX = containerWidth / unscaledViewport.width;
+              var scaleY = containerHeight / unscaledViewport.height;
+              var baseScale = Math.min(scaleX, scaleY);
+              var textViewport = currPageObj.getViewport({ scale: baseScale });
+
+              textLayer.style.setProperty('--scale-factor', textViewport.scale);
+
+              var textLayerTask = pdfjsLib.renderTextLayer({
+                textContentSource: textContent,
+                container: textLayer,
+                viewport: textViewport,
+                textDivs: []
+              });
+              await textLayerTask.promise;
+
+              if (pageHighlightsCache[pageNum]) {
+                applySavedHighlights(pageHighlightsCache[pageNum]);
+              }
+            }
+          } catch(eText) {
+            console.warn("Error rendering textLayer:", eText);
+          }
 
           var progress = Math.min(100, Math.max(0, Math.round((pageNum / totalPages) * 100)));
           sendToRN("PROGRESS_UPDATE", {
@@ -508,6 +624,7 @@ export function getPdfReaderHTML(
 
       var touchStartX = 0;
       var touchStartY = 0;
+      var touchStartTime = 0;
 
       document.addEventListener('touchstart', function(e) {
         if (e.touches.length === 2) {
@@ -517,6 +634,7 @@ export function getPdfReaderHTML(
         } else if (e.touches.length === 1) {
           touchStartX = e.touches[0].clientX;
           touchStartY = e.touches[0].clientY;
+          touchStartTime = Date.now();
           startPanX = panX;
           startPanY = panY;
         }
@@ -548,7 +666,17 @@ export function getPdfReaderHTML(
 
         // Tap & Swipe handler
         if (e.changedTouches.length === 1 && !isPinching) {
+          var activeSel = window.getSelection();
+          var selectedStr = activeSel ? activeSel.toString().trim() : '';
+          if (selectedStr.length > 0) {
+            updateSelectionToolbar();
+            return;
+          } else {
+            hideSelectionToolbar();
+          }
+
           var now = Date.now();
+          var touchDuration = now - touchStartTime;
           var touchEndX = e.changedTouches[0].clientX;
           var touchEndY = e.changedTouches[0].clientY;
           var diffX = touchEndX - touchStartX;
@@ -565,11 +693,11 @@ export function getPdfReaderHTML(
             }
           } else {
             // Single tap check vs Swipe check
-            if (Math.abs(diffX) < 12 && Math.abs(diffY) < 12) {
+            if (Math.abs(diffX) < 12 && Math.abs(diffY) < 12 && touchDuration < 300) {
               singleTapTimeout = setTimeout(function() {
                 sendToRN("TOGGLE_BARS", {});
               }, 220);
-            } else if (currentScale <= 1.05 && Math.abs(diffX) > 45 && Math.abs(diffX) > Math.abs(diffY)) {
+            } else if (touchDuration < 400 && currentScale <= 1.05 && Math.abs(diffX) > 45 && Math.abs(diffX) > Math.abs(diffY)) {
               if (diffX < 0) {
                 nextPage();
               } else {
@@ -580,6 +708,119 @@ export function getPdfReaderHTML(
           lastTapTime = now;
         }
       }, false);
+
+      function updateSelectionToolbar() {
+        var sel = window.getSelection();
+        var txt = sel ? sel.toString().trim() : '';
+        var toolbar = document.getElementById('highlight-toolbar');
+        if (!toolbar) return;
+
+        if (txt && txt.length > 0 && sel.rangeCount > 0) {
+          try {
+            var range = sel.getRangeAt(0);
+            var rect = range.getBoundingClientRect();
+            if (rect && rect.width > 0 && rect.height > 0) {
+              var topPos = rect.top - 46;
+              if (topPos < 50) {
+                topPos = rect.bottom + 14;
+              }
+              var leftPos = rect.left + (rect.width / 2);
+              leftPos = Math.max(75, Math.min(window.innerWidth - 75, leftPos));
+              toolbar.style.top = topPos + 'px';
+              toolbar.style.left = leftPos + 'px';
+              toolbar.style.display = 'flex';
+              return;
+            }
+          } catch(e) {}
+        }
+        toolbar.style.display = 'none';
+      }
+
+      function hideSelectionToolbar() {
+        var toolbar = document.getElementById('highlight-toolbar');
+        if (toolbar) toolbar.style.display = 'none';
+      }
+
+      document.addEventListener('selectionchange', function() {
+        updateSelectionToolbar();
+      });
+
+      function highlightSelectionInTextLayer(color) {
+        try {
+          var sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) return;
+          var textLayer = document.getElementById('text-layer');
+          if (!textLayer) return;
+
+          var spans = textLayer.querySelectorAll('span');
+          spans.forEach(function(span) {
+            if (sel.containsNode(span, true)) {
+              span.style.backgroundColor = 'rgba(250, 204, 21, 0.45)';
+              span.style.borderRadius = '2px';
+              span.setAttribute('data-highlighted', 'true');
+            }
+          });
+        } catch(e) {
+          console.warn('Error highlighting selection:', e);
+        }
+      }
+
+      function applySavedHighlights(highlights) {
+        if (!highlights || !highlights.length) return;
+        var textLayer = document.getElementById('text-layer');
+        if (!textLayer) return;
+
+        var spans = textLayer.querySelectorAll('span');
+        if (!spans.length) return;
+
+        highlights.forEach(function(h) {
+          if (!h.text || h.text.trim().length < 2) return;
+          var target = h.text.trim().toLowerCase();
+          var color = h.color || '#FACC15';
+          var bg = color === '#FACC15' ? 'rgba(250, 204, 21, 0.45)' : (color + '66');
+
+          spans.forEach(function(span) {
+            var spanTxt = (span.textContent || '').trim().toLowerCase();
+            if (spanTxt.length > 2 && (target.indexOf(spanTxt) !== -1 || spanTxt.indexOf(target) !== -1)) {
+              span.style.backgroundColor = bg;
+              span.style.borderRadius = '2px';
+              span.setAttribute('data-highlighted', 'true');
+            }
+          });
+        });
+      }
+
+      function applyHighlight() {
+        var sel = window.getSelection();
+        var txt = sel ? sel.toString().trim() : '';
+        if (txt && txt.length > 0) {
+          highlightSelectionInTextLayer('#FACC15');
+          pageHighlightsCache[currentPage] = pageHighlightsCache[currentPage] || [];
+          pageHighlightsCache[currentPage].push({ text: txt, color: '#FACC15' });
+
+          sendToRN('HIGHLIGHT_CREATED', {
+            text: txt,
+            page: currentPage,
+            color: '#FACC15'
+          });
+          if (sel.removeAllRanges) sel.removeAllRanges();
+          hideSelectionToolbar();
+        }
+      }
+
+      var btnHl = document.getElementById('btn-highlight');
+      if (btnHl) {
+        btnHl.addEventListener('pointerdown', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          applyHighlight();
+        });
+        btnHl.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          applyHighlight();
+        });
+      }
 
       var streamedPdfChunks = [];
       function handleMessage(event) {
@@ -602,6 +843,13 @@ export function getPdfReaderHTML(
               pdfSource = data.payload.base64;
               isBase64 = true;
               loadPDF();
+            }
+          } else if (data.type === 'LOAD_PAGE_HIGHLIGHTS') {
+            if (data.payload && data.payload.page !== undefined) {
+              pageHighlightsCache[data.payload.page] = data.payload.highlights || [];
+              if (currentPage === data.payload.page) {
+                applySavedHighlights(data.payload.highlights);
+              }
             }
           } else if (data.type === 'NEXT_PAGE') {
             nextPage();

@@ -18,6 +18,7 @@ export interface Bookmark {
   cfiOrPage: string; // CFI string for EPUB or page number for PDF/TXT
   chapterTitle?: string;
   snippet?: string;
+  color?: string; // Hex color code for highlight (default: #FACC15)
   createdAt: number;
 }
 

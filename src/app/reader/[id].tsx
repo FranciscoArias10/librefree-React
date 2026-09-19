@@ -16,7 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
-import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark, updateBookFilePath } from '../../services/database';
+import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark, getBookmarks, updateBookFilePath } from '../../services/database';
 import { readBookContent, ensureBooksDirectoryExists, copyFileToPermanentStorage } from '../../services/fileScanner';
 import { getEpubReaderHTML } from '../../reader/EpubReaderHTML';
 import { getTxtReaderHTML } from '../../reader/TxtReaderHTML';
@@ -24,7 +24,7 @@ import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
 import { ReaderControlsModal } from '../../components/ReaderControlsModal';
 import { AudioPlayerModal } from '../../components/AudioPlayerModal';
 import { speakText, stopSpeech } from '../../services/ttsService';
-import { Book, ReadingSettings } from '../../types/book';
+import { Book, Bookmark, ReadingSettings } from '../../types/book';
 import { Toast } from '../../components/Toast';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -203,7 +203,7 @@ const TopProgressScrubber: React.FC<TopProgressScrubberProps> = ({
 
 export default function ReaderScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, page: initialPageParam } = useLocalSearchParams<{ id: string; page?: string }>();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const dynamicReaderBottom = Math.max(insets.bottom + 8, 16);
@@ -211,6 +211,7 @@ export default function ReaderScreen() {
   const webViewRef = useRef<WebView>(null);
   const [book, setBook] = useState<Book | null>(null);
   const [bookData, setBookData] = useState<{ content: string; isBase64: boolean }>({ content: '', isBase64: false });
+  const [bookBookmarks, setBookBookmarks] = useState<Bookmark[]>([]);
   const [settings, setSettings] = useState<ReadingSettings>({
     fontSize: 18,
     fontFamily: 'Serif',
@@ -248,13 +249,18 @@ export default function ReaderScreen() {
         const s = await getReadingSettings();
         setSettings(s);
 
+        const bms = await getBookmarks(id);
+        setBookBookmarks(bms);
+
         if (b) {
           setBook(b);
           setProgress(b.progressPercentage || 0);
           if (b.currentLocation) setCurrentCfi(b.currentLocation);
           if (b.currentChapter) setCurrentChapter(b.currentChapter);
 
-          if (b.currentChapter && b.currentChapter.toLowerCase().includes('página')) {
+          if (initialPageParam) {
+            setPageLabel(`Página ${initialPageParam}`);
+          } else if (b.currentChapter && b.currentChapter.toLowerCase().includes('página')) {
             setPageLabel(b.currentChapter);
           } else {
             const fakePage = Math.max(1, Math.round(((b.progressPercentage || 0) / 100) * 350));
@@ -316,8 +322,35 @@ export default function ReaderScreen() {
           const newChapter = chapter || (page ? `Página ${page}` : undefined);
           updateBookProgress(book.id, newProgress, newCfi, newChapter);
         }
+
+        const currentPageNum = page || (actualPercent !== undefined ? Math.max(1, Math.round((actualPercent / 100) * (payloadTotalPages || totalPages))) : 1);
+        if (webViewRef.current && book?.format === 'PDF') {
+          const pageBms = bookBookmarks.filter((b) => b.cfiOrPage === String(currentPageNum));
+          webViewRef.current.postMessage(
+            JSON.stringify({
+              type: 'LOAD_PAGE_HIGHLIGHTS',
+              payload: {
+                page: currentPageNum,
+                highlights: pageBms.map((b) => ({ text: b.snippet || b.chapterTitle, color: b.color || '#FACC15' })),
+              },
+            })
+          );
+        }
       } else if (data.type === 'INIT_READY') {
         // WebView inicializado y listo con HTML embebido directamente
+        if (webViewRef.current && book?.format === 'PDF') {
+          const initialP = parseInt(initialPageParam || book.currentLocation || '1', 10) || 1;
+          const pageBms = bookBookmarks.filter((b) => b.cfiOrPage === String(initialP));
+          webViewRef.current.postMessage(
+            JSON.stringify({
+              type: 'LOAD_PAGE_HIGHLIGHTS',
+              payload: {
+                page: initialP,
+                highlights: pageBms.map((b) => ({ text: b.snippet || b.chapterTitle, color: b.color || '#FACC15' })),
+              },
+            })
+          );
+        }
       } else if (data.type === 'COVER_GENERATED') {
         const { coverPath } = data.payload;
         if (book && coverPath && coverPath.length > 50) {
@@ -327,6 +360,25 @@ export default function ReaderScreen() {
         const { text } = data.payload;
         if (book && text && text.length > 20) {
           saveExtractedBookText(book.id, text);
+        }
+      } else if (data.type === 'HIGHLIGHT_CREATED') {
+        const { text, page: hlPage, color } = data.payload;
+        if (book && text) {
+          const pageNumStr = String(hlPage || currentCfi || '1');
+          addBookmark({
+            bookId: book.id,
+            cfiOrPage: pageNumStr,
+            chapterTitle: `Página ${pageNumStr}`,
+            snippet: text,
+            color: color || '#FACC15',
+          })
+            .then((newBm) => {
+              setBookBookmarks((prev) => [newBm, ...prev]);
+              setToast({ visible: true, message: '🖍️ Subrayado guardado en tus marcadores', type: 'success' });
+            })
+            .catch((err) => {
+              console.error('Error guardando marcador resaltado:', err);
+            });
         }
       } else if (data.type === 'TEXT_SELECTED') {
         setSelectedText(data.payload.text || '');
@@ -383,12 +435,15 @@ export default function ReaderScreen() {
 
   const handleAddBookmark = async () => {
     if (!book) return;
-    await addBookmark({
+    const pageNumStr = currentCfi || `${progress}%`;
+    const newBm = await addBookmark({
       bookId: book.id,
-      cfiOrPage: currentCfi || `${progress}%`,
-      chapterTitle: currentChapter || 'Marcador de lectura',
+      cfiOrPage: pageNumStr,
+      chapterTitle: currentChapter || `Página ${pageNumStr}`,
       snippet: selectedText || `Progreso ${progress}%`,
+      color: '#FACC15',
     });
+    setBookBookmarks((prev) => [newBm, ...prev]);
     setToast({ visible: true, message: '✓ Posición guardada en tus marcadores.', type: 'success' });
   };
 
@@ -406,14 +461,15 @@ export default function ReaderScreen() {
 
   const htmlSource = useMemo(() => {
     if (!book || !bookData.content) return '';
+    const initialPos = initialPageParam || book.currentLocation || '1';
     if (book.format === 'EPUB') {
-      return getEpubReaderHTML(bookData.content, bookData.isBase64, book.currentLocation, settings, book.progressPercentage);
+      return getEpubReaderHTML(bookData.content, bookData.isBase64, initialPos, settings, book.progressPercentage);
     }
     if (book.format === 'PDF') {
-      return getPdfReaderHTML(bookData.content, book.currentLocation || '1', settings, false, bookData.isBase64);
+      return getPdfReaderHTML(bookData.content, initialPos, settings, false, bookData.isBase64);
     }
     return getTxtReaderHTML(bookData.content, book.title, settings);
-  }, [book?.id, !!bookData.content]);
+  }, [book?.id, !!bookData.content, initialPageParam]);
 
   if (loading || !book) {
     return (

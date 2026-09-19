@@ -60,6 +60,7 @@ export async function initDatabase(): Promise<void> {
       cfiOrPage TEXT NOT NULL,
       chapterTitle TEXT,
       snippet TEXT,
+      color TEXT DEFAULT '#FACC15',
       createdAt INTEGER NOT NULL,
       FOREIGN KEY (bookId) REFERENCES books (id) ON DELETE CASCADE
     );
@@ -75,6 +76,10 @@ export async function initDatabase(): Promise<void> {
       value TEXT NOT NULL
     );
   `);
+
+  try {
+    await db.execAsync(`ALTER TABLE bookmarks ADD COLUMN color TEXT DEFAULT '#FACC15';`);
+  } catch (e) {}
 
   await removeSampleBooks();
 }
@@ -196,13 +201,29 @@ export async function getBookmarks(bookId: string): Promise<Bookmark[]> {
   return db.getAllAsync<Bookmark>('SELECT * FROM bookmarks WHERE bookId = ? ORDER BY createdAt DESC;', [bookId]);
 }
 
+export async function getAllBookmarks(): Promise<(Bookmark & { bookTitle: string; bookAuthor: string; bookFormat: string; coverPath?: string })[]> {
+  const db = await getDB();
+  return db.getAllAsync<Bookmark & { bookTitle: string; bookAuthor: string; bookFormat: string; coverPath?: string }>(
+    `SELECT b.*, k.title as bookTitle, k.author as bookAuthor, k.format as bookFormat, k.coverPath
+     FROM bookmarks b
+     JOIN books k ON b.bookId = k.id
+     ORDER BY b.createdAt DESC;`
+  );
+}
+
 export async function addBookmark(bookmark: Omit<Bookmark, 'id' | 'createdAt'>): Promise<Bookmark> {
   const db = await getDB();
   const id = 'bm_' + Math.random().toString(36).substring(2, 10);
   const createdAt = Date.now();
+  const color = bookmark.color || '#FACC15';
   await db.runAsync(
-    `INSERT INTO bookmarks (id, bookId, cfiOrPage, chapterTitle, snippet, createdAt) VALUES (?, ?, ?, ?, ?, ?);`,
-    [id, bookmark.bookId, bookmark.cfiOrPage, bookmark.chapterTitle || null, bookmark.snippet || null, createdAt]
+    `INSERT INTO bookmarks (id, bookId, cfiOrPage, chapterTitle, snippet, color, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?);`,
+    [id, bookmark.bookId, bookmark.cfiOrPage, bookmark.chapterTitle || null, bookmark.snippet || null, color, createdAt]
   );
-  return { ...bookmark, id, createdAt };
+  return { ...bookmark, id, color, createdAt };
+}
+
+export async function deleteBookmark(id: string): Promise<void> {
+  const db = await getDB();
+  await db.runAsync('DELETE FROM bookmarks WHERE id = ?;', [id]);
 }

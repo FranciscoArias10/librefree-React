@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
@@ -14,9 +15,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { getAllBooks, toggleFavorite, deleteBook } from '../../services/database';
+import { getAllBooks, toggleFavorite, deleteBook, getAllBookmarks, deleteBookmark } from '../../services/database';
 import { pickMultipleBooksByFormat, bulkImportBooks } from '../../services/fileScanner';
 import { BookCard } from '../../components/BookCard';
+import { BookmarkItemCard, BookmarkWithBookInfo } from '../../components/BookmarkItemCard';
 import { BackgroundCoverProcessor } from '../../components/BackgroundCoverProcessor';
 import { Toast } from '../../components/Toast';
 import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal';
@@ -29,9 +31,11 @@ export default function BookshelfScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const [books, setBooks] = useState<Book[]>([]);
+  const [bookmarks, setBookmarks] = useState<BookmarkWithBookInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingBookmarks, setLoadingBookmarks] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'FAVORITES' | 'EPUB' | 'PDF' | 'TXT'>('ALL');
+  const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'FAVORITES' | 'BOOKMARKS' | 'EPUB' | 'PDF' | 'TXT'>('ALL');
   const [layoutMode, setLayoutMode] = useState<'grid2' | 'grid3' | 'list'>('grid2');
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
@@ -77,16 +81,38 @@ export default function BookshelfScreen() {
     }
   };
 
+  const fetchBookmarks = async () => {
+    try {
+      setLoadingBookmarks(true);
+      const data = await getAllBookmarks();
+      setBookmarks(data);
+    } catch (err) {
+      console.error('Error cargando marcadores:', err);
+    } finally {
+      setLoadingBookmarks(false);
+    }
+  };
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const data = await getAllBooks();
-      setBooks(data);
-      setToast({
-        visible: true,
-        message: '✓ Estantería actualizada.',
-        type: 'info',
-      });
+      if (selectedFilter === 'BOOKMARKS') {
+        await fetchBookmarks();
+        setToast({
+          visible: true,
+          message: '✓ Marcadores actualizados.',
+          type: 'info',
+        });
+      } else {
+        const data = await getAllBooks();
+        setBooks(data);
+        await fetchBookmarks();
+        setToast({
+          visible: true,
+          message: '✓ Estantería actualizada.',
+          type: 'info',
+        });
+      }
     } catch (err) {
       console.error('Error al refrescar estantería:', err);
     } finally {
@@ -97,8 +123,34 @@ export default function BookshelfScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchBooks(books.length === 0);
+      fetchBookmarks();
     }, [books.length])
   );
+
+  const handleDeleteBookmark = async (id: string) => {
+    try {
+      await deleteBookmark(id);
+      setBookmarks((prev) => prev.filter((b) => b.id !== id));
+      setToast({
+        visible: true,
+        message: '✓ Marcador eliminado.',
+        type: 'info',
+      });
+    } catch (e) {
+      setToast({
+        visible: true,
+        message: 'No se pudo eliminar el marcador.',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleOpenBookmark = (bm: BookmarkWithBookInfo) => {
+    router.push({
+      pathname: '/reader/[id]',
+      params: { id: bm.bookId, page: bm.cfiOrPage },
+    });
+  };
 
   const handleToggleFavorite = async (bookId: string, currentFav: boolean) => {
     await toggleFavorite(bookId, !currentFav);
@@ -208,6 +260,16 @@ export default function BookshelfScreen() {
     return true;
   });
 
+  const filteredBookmarks = bookmarks.filter((bm) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (bm.snippet && bm.snippet.toLowerCase().includes(q)) ||
+      (bm.bookTitle && bm.bookTitle.toLowerCase().includes(q)) ||
+      (bm.chapterTitle && bm.chapterTitle.toLowerCase().includes(q))
+    );
+  });
+
   const androidStatusBarPadding = Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 10 : 10;
 
   return (
@@ -300,56 +362,103 @@ export default function BookshelfScreen() {
           <Feather name="search" size={18} color={theme.textMuted} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: theme.textPrimary }]}
-            placeholder="Buscar por título o autor..."
+            placeholder={selectedFilter === 'BOOKMARKS' ? 'Buscar en citas y marcadores...' : 'Buscar por título o autor...'}
             placeholderTextColor={theme.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
         </View>
 
-        <TouchableOpacity
-          style={[styles.layoutToggleBtn, { backgroundColor: theme.bgInput, borderColor: theme.border }]}
-          onPress={handleToggleLayoutMode}
-          activeOpacity={0.7}
-        >
-          <Feather
-            name={layoutMode === 'grid2' ? 'grid' : layoutMode === 'grid3' ? 'columns' : 'list'}
-            size={18}
-            color={theme.accent}
-          />
-        </TouchableOpacity>
+        {selectedFilter !== 'BOOKMARKS' && (
+          <TouchableOpacity
+            style={[styles.layoutToggleBtn, { backgroundColor: theme.bgInput, borderColor: theme.border }]}
+            onPress={handleToggleLayoutMode}
+            activeOpacity={0.7}
+          >
+            <Feather
+              name={layoutMode === 'grid2' ? 'grid' : layoutMode === 'grid3' ? 'columns' : 'list'}
+              size={18}
+              color={theme.accent}
+            />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Category Filter Chips */}
       <View style={styles.filtersContainer}>
-        {[
-          { key: 'ALL', label: 'Todos' },
-          { key: 'FAVORITES', label: '★ Favoritos' },
-          { key: 'EPUB', label: 'EPUB' },
-          { key: 'PDF', label: 'PDF' },
-        ].map((f) => (
-          <TouchableOpacity
-            key={f.key}
-            style={[
-              styles.filterChip,
-              { backgroundColor: selectedFilter === f.key ? theme.bgChipSelected : theme.bgChip },
-            ]}
-            onPress={() => setSelectedFilter(f.key as any)}
-          >
-            <Text
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtersScroll}
+        >
+          {[
+            { key: 'ALL', label: 'Todos' },
+            { key: 'BOOKMARKS', label: `🔖 Marcadores${bookmarks.length > 0 ? ` (${bookmarks.length})` : ''}` },
+            { key: 'FAVORITES', label: '★ Favoritos' },
+            { key: 'EPUB', label: 'EPUB' },
+            { key: 'PDF', label: 'PDF' },
+          ].map((f) => (
+            <TouchableOpacity
+              key={f.key}
               style={[
-                styles.filterChipText,
-                { color: selectedFilter === f.key ? theme.textChipSelected : theme.textChip },
+                styles.filterChip,
+                { backgroundColor: selectedFilter === f.key ? theme.bgChipSelected : theme.bgChip },
               ]}
+              onPress={() => setSelectedFilter(f.key as any)}
             >
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.filterChipText,
+                  { color: selectedFilter === f.key ? theme.textChipSelected : theme.textChip },
+                ]}
+              >
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
-      {/* Main Bookshelf Content */}
-      {loading ? (
+      {/* Main Bookshelf or Bookmarks Content */}
+      {selectedFilter === 'BOOKMARKS' ? (
+        loadingBookmarks ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color={theme.accent} />
+            <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Cargando tus marcadores...</Text>
+          </View>
+        ) : filteredBookmarks.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <View style={[styles.bookmarkEmptyCircle, { backgroundColor: theme.accent + '18' }]}>
+              <Feather name="bookmark" size={44} color={theme.accent} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No hay marcadores aún</Text>
+            <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+              Abre cualquier libro o documento PDF, selecciona texto con pulsación larga y toca "Resaltar" para guardarlo con color fluorescente.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredBookmarks}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.bookmarkListContainer}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={[theme.accent]}
+                tintColor={theme.accent}
+              />
+            }
+            renderItem={({ item }) => (
+              <BookmarkItemCard
+                bookmark={item}
+                onPress={handleOpenBookmark}
+                onDelete={handleDeleteBookmark}
+              />
+            )}
+          />
+        )
+      ) : loading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={theme.accent} />
           <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Cargando estantería...</Text>
@@ -536,9 +645,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   filtersContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
     marginBottom: 14,
+  },
+  filtersScroll: {
+    paddingHorizontal: 16,
     gap: 8,
   },
   filterChip: {
@@ -549,6 +659,17 @@ const styles = StyleSheet.create({
   filterChipText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  bookmarkListContainer: {
+    paddingBottom: 110,
+  },
+  bookmarkEmptyCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   shelfListContainer: {
     paddingHorizontal: 16,

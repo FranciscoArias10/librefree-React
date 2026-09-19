@@ -182,6 +182,34 @@ async function runTestSuite() {
   passed += bookFilesRes.passed;
   failed += bookFilesRes.failed;
 
+  // TEST SUITE 8: BOOKMARK & PDF TEXT LAYER HIGHLIGHTING
+  console.log('\n🖍️ [SUITE 8] Bookmark & PDF Text Layer Highlighting Verification');
+  
+  assert(
+    pdfHtml.includes('class="textLayer"') && pdfHtml.includes('id="text-layer"'),
+    'PdfReaderHTML includes interactive textLayer overlay for text selection'
+  );
+  assert(
+    pdfHtml.includes('id="highlight-toolbar"') && pdfHtml.includes('id="btn-highlight"'),
+    'PdfReaderHTML includes floating highlight action toolbar'
+  );
+  assert(
+    pdfHtml.includes('pdfjsLib.renderTextLayer'),
+    'PdfReaderHTML invokes pdfjsLib.renderTextLayer to synchronize text with canvas'
+  );
+  assert(
+    pdfHtml.includes('LOAD_PAGE_HIGHLIGHTS'),
+    'PdfReaderHTML supports LOAD_PAGE_HIGHLIGHTS message to draw persisted highlights'
+  );
+  assert(
+    pdfHtml.includes('HIGHLIGHT_CREATED'),
+    'PdfReaderHTML dispatches HIGHLIGHT_CREATED message when user highlights text'
+  );
+  assert(
+    pdfHtml.includes('#FACC15'),
+    'PdfReaderHTML uses standard fluorescent yellow highlighter (#FACC15)'
+  );
+
   console.log('\n====================================================');
   console.log(`📊 TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
   console.log('====================================================\n');
