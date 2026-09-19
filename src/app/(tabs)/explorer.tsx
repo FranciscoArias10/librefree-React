@@ -137,7 +137,7 @@ export default function FileExplorerScreen() {
       const data = await readBookContent(file.uri, file.format);
       if (data.content && data.content.length > 5) {
         if (file.format === 'PDF') {
-          setProcessingHtml(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, true));
+          setProcessingHtml(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, true, data.isBase64));
         } else if (file.format === 'EPUB') {
           setProcessingHtml(getEpubReaderHTML(data.content, data.isBase64, undefined, DEFAULT_SETTINGS));
         } else {

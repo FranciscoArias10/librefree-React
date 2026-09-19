@@ -235,9 +235,12 @@ export function getEpubReaderHTML(
               sendToRN("COVER_GENERATED", { coverPath: dataUrl });
             };
             img.src = coverUrl;
+          } else {
+            sendToRN("NO_COVER_AVAILABLE", {});
           }
         } catch(e) {
           console.warn("Error generando portada EPUB:", e);
+          sendToRN("NO_COVER_AVAILABLE", {});
         }
       }
 

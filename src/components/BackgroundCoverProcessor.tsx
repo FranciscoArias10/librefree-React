@@ -77,7 +77,7 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void;
         if (data.content && data.content.length > 20) {
           setCurrentBook({ id: row.id, filePath: row.filePath, format: row.format });
           if (row.format === 'PDF') {
-            setHtmlSource(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, true));
+            setHtmlSource(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, true, data.isBase64));
           } else if (row.format === 'EPUB') {
             setHtmlSource(getEpubReaderHTML(data.content, data.isBase64, undefined, DEFAULT_SETTINGS));
           }
@@ -118,6 +118,10 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void;
           clearCurrentJob();
           setTimeout(checkPendingBooks, 100);
         }
+      } else if (data.type === 'NO_COVER_AVAILABLE' && currentBook) {
+        failedBookIdsRef.current.add(currentBook.id);
+        clearCurrentJob();
+        setTimeout(checkPendingBooks, 100);
       } else if ((data.type === 'FULL_PDF_TEXT' || data.type === 'FULL_EPUB_TEXT') && currentBook && data.payload?.text) {
         const text = data.payload.text;
         if (text.length > 20) {
