@@ -210,6 +210,38 @@ async function runTestSuite() {
     'PdfReaderHTML uses standard fluorescent yellow highlighter (#FACC15)'
   );
 
+  console.log('\n📸 [SUITE 9] Page Share & Selection Toolbar Verification (PDF & EPUB)');
+  assert(
+    pdfHtml.includes('id="btn-copy"') && pdfHtml.includes('id="btn-share"'),
+    'PdfReaderHTML includes Copiar and Compartir buttons in selection toolbar'
+  );
+  assert(
+    pdfHtml.includes('CAPTURE_PAGE_IMAGE') && pdfHtml.includes('PAGE_IMAGE_CAPTURED'),
+    'PdfReaderHTML supports CAPTURE_PAGE_IMAGE and dispatches PAGE_IMAGE_CAPTURED'
+  );
+  assert(
+    pdfHtml.includes('exportCanvas.toDataURL'),
+    'PdfReaderHTML captures clean canvas image with highlight overlays'
+  );
+
+  const epubSample = getEpubReaderHTML('sample', false, '1', DEFAULT_SETTINGS, 0);
+  assert(
+    epubSample.includes('id="highlight-toolbar"') && epubSample.includes('id="btn-highlight"'),
+    'EpubReaderHTML includes floating action toolbar with Resaltar'
+  );
+  assert(
+    epubSample.includes('id="btn-copy"') && epubSample.includes('id="btn-share"'),
+    'EpubReaderHTML includes Copiar and Compartir buttons in selection toolbar'
+  );
+  assert(
+    epubSample.includes('CAPTURE_PAGE_IMAGE') && epubSample.includes('PAGE_IMAGE_CAPTURED'),
+    'EpubReaderHTML supports CAPTURE_PAGE_IMAGE and dispatches PAGE_IMAGE_CAPTURED'
+  );
+  assert(
+    epubSample.includes('html2canvas'),
+    'EpubReaderHTML embeds html2canvas library for high-definition page snapshot'
+  );
+
   console.log('\n====================================================');
   console.log(`📊 TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
   console.log('====================================================\n');

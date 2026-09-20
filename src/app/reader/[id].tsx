@@ -16,6 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Sharing from 'expo-sharing';
 import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark, getBookmarks, updateBookFilePath } from '../../services/database';
 import { readBookContent, ensureBooksDirectoryExists, copyFileToPermanentStorage } from '../../services/fileScanner';
 import { getEpubReaderHTML } from '../../reader/EpubReaderHTML';
@@ -295,6 +296,12 @@ export default function ReaderScreen() {
     }
   };
 
+  const handleSharePage = () => {
+    if (!webViewRef.current) return;
+    setToast({ visible: true, message: '📸 Preparando foto de la página...', type: 'info' });
+    webViewRef.current.postMessage(JSON.stringify({ type: 'CAPTURE_PAGE_IMAGE' }));
+  };
+
   const handleWebViewMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -324,33 +331,94 @@ export default function ReaderScreen() {
         }
 
         const currentPageNum = page || (actualPercent !== undefined ? Math.max(1, Math.round((actualPercent / 100) * (payloadTotalPages || totalPages))) : 1);
-        if (webViewRef.current && book?.format === 'PDF') {
-          const pageBms = bookBookmarks.filter((b) => b.cfiOrPage === String(currentPageNum));
-          webViewRef.current.postMessage(
-            JSON.stringify({
-              type: 'LOAD_PAGE_HIGHLIGHTS',
-              payload: {
-                page: currentPageNum,
-                highlights: pageBms.map((b) => ({ text: b.snippet || b.chapterTitle, color: b.color || '#FACC15' })),
-              },
-            })
-          );
+        if (webViewRef.current) {
+          if (book?.format === 'PDF') {
+            const pageBms = bookBookmarks.filter((b) => b.cfiOrPage === String(currentPageNum));
+            webViewRef.current.postMessage(
+              JSON.stringify({
+                type: 'LOAD_PAGE_HIGHLIGHTS',
+                payload: {
+                  page: currentPageNum,
+                  highlights: pageBms.map((b) => ({ text: b.snippet || b.chapterTitle, color: b.color || '#FACC15' })),
+                },
+              })
+            );
+          } else if (book?.format === 'EPUB') {
+            webViewRef.current.postMessage(
+              JSON.stringify({
+                type: 'LOAD_PAGE_HIGHLIGHTS',
+                payload: {
+                  highlights: bookBookmarks.map((b) => ({ text: b.snippet || b.chapterTitle, color: b.color || '#FACC15' })),
+                },
+              })
+            );
+          }
         }
       } else if (data.type === 'INIT_READY') {
         // WebView inicializado y listo con HTML embebido directamente
-        if (webViewRef.current && book?.format === 'PDF') {
-          const initialP = parseInt(initialPageParam || book.currentLocation || '1', 10) || 1;
-          const pageBms = bookBookmarks.filter((b) => b.cfiOrPage === String(initialP));
-          webViewRef.current.postMessage(
-            JSON.stringify({
-              type: 'LOAD_PAGE_HIGHLIGHTS',
-              payload: {
-                page: initialP,
-                highlights: pageBms.map((b) => ({ text: b.snippet || b.chapterTitle, color: b.color || '#FACC15' })),
-              },
-            })
-          );
+        if (webViewRef.current) {
+          if (book?.format === 'PDF') {
+            const initialP = parseInt(initialPageParam || book.currentLocation || '1', 10) || 1;
+            const pageBms = bookBookmarks.filter((b) => b.cfiOrPage === String(initialP));
+            webViewRef.current.postMessage(
+              JSON.stringify({
+                type: 'LOAD_PAGE_HIGHLIGHTS',
+                payload: {
+                  page: initialP,
+                  highlights: pageBms.map((b) => ({ text: b.snippet || b.chapterTitle, color: b.color || '#FACC15' })),
+                },
+              })
+            );
+          } else if (book?.format === 'EPUB') {
+            webViewRef.current.postMessage(
+              JSON.stringify({
+                type: 'LOAD_PAGE_HIGHLIGHTS',
+                payload: {
+                  highlights: bookBookmarks.map((b) => ({ text: b.snippet || b.chapterTitle, color: b.color || '#FACC15' })),
+                },
+              })
+            );
+          }
         }
+      } else if (data.type === 'PAGE_IMAGE_CAPTURED') {
+        const { dataUrl, page: capturedPage, totalPages: capturedTotal } = data.payload || {};
+        if (dataUrl && book) {
+          (async () => {
+            try {
+              const isAvailable = await Sharing.isAvailableAsync();
+              if (!isAvailable) {
+                setToast({ visible: true, message: 'Compartir no está disponible en este dispositivo', type: 'error' });
+                return;
+              }
+
+              const base64Data = dataUrl.replace(/^data:image\/[a-z]+;base64,/, '');
+              const cleanTitle = (book.title || 'libro').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
+              const fileName = `librefree_${cleanTitle}_${Date.now()}.jpg`;
+              const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+
+              await FileSystem.writeAsStringAsync(fileUri, base64Data, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+
+              await Sharing.shareAsync(fileUri, {
+                mimeType: 'image/jpeg',
+                dialogTitle: `Compartir página de "${book.title}"`,
+                UTI: 'public.jpeg',
+              });
+
+              setToast({ visible: true, message: '✓ Imagen lista para enviar', type: 'success' });
+            } catch (err: any) {
+              console.error('Error al compartir página:', err);
+              setToast({ visible: true, message: 'Error al compartir: ' + (err?.message || ''), type: 'error' });
+            }
+          })();
+        }
+      } else if (data.type === 'PAGE_IMAGE_ERROR') {
+        setToast({ visible: true, message: 'No se pudo generar la foto de la página', type: 'error' });
+      } else if (data.type === 'COPY_TO_CLIPBOARD') {
+        setToast({ visible: true, message: '📋 Texto copiado al portapapeles', type: 'success' });
+      } else if (data.type === 'SHARE_SELECTION') {
+        setToast({ visible: true, message: '📸 Generando foto con el fragmento sombreado...', type: 'info' });
       } else if (data.type === 'COVER_GENERATED') {
         const { coverPath } = data.payload;
         if (book && coverPath && coverPath.length > 50) {
@@ -374,7 +442,7 @@ export default function ReaderScreen() {
           })
             .then((newBm) => {
               setBookBookmarks((prev) => [newBm, ...prev]);
-              setToast({ visible: true, message: '🖍️ Subrayado guardado en tus marcadores', type: 'success' });
+              setToast({ visible: true, message: '🖍️ Fragmento sombreado y guardado en marcadores', type: 'success' });
             })
             .catch((err) => {
               console.error('Error guardando marcador resaltado:', err);
@@ -616,6 +684,11 @@ export default function ReaderScreen() {
                 }}
               >
                 <Feather name="volume-2" size={20} color={ttsActive ? '#3182CE' : getTextColor()} />
+              </TouchableOpacity>
+
+              {/* Share Page Button */}
+              <TouchableOpacity style={styles.iconBtn} onPress={handleSharePage} accessibilityLabel="Compartir página">
+                <Feather name="share-2" size={20} color={getTextColor()} />
               </TouchableOpacity>
 
               {/* Bookmark Button */}

@@ -141,20 +141,48 @@ export function getPdfReaderHTML(
       z-index: 9999;
       background: #0F172A;
       color: #FFFFFF;
-      border-radius: 28px;
-      padding: 7px 16px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.2);
+      border-radius: 26px;
+      padding: 5px 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.25);
       align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      border: 1px solid rgba(255,255,255,0.2);
+      gap: 4px;
+      border: 1px solid rgba(255,255,255,0.18);
       transform: translate(-50%, -100%);
-      transition: opacity 0.15s ease, transform 0.15s ease;
+      transition: opacity 0.15s ease;
+      user-select: none;
+      -webkit-user-select: none;
     }
-    #highlight-toolbar:active {
-      transform: translate(-50%, -100%) scale(0.96);
+    .hl-btn {
+      background: transparent;
+      border: none;
+      color: #FFFFFF;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 16px;
+      cursor: pointer;
+      outline: none;
+      font-family: inherit;
+    }
+    .hl-btn:active {
+      background: rgba(255,255,255,0.18);
+      transform: scale(0.96);
+    }
+    .hl-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #FACC15;
+      display: inline-block;
+      box-shadow: 0 0 8px #FACC15;
+    }
+    .hl-divider {
+      width: 1px;
+      height: 16px;
+      background: rgba(255,255,255,0.2);
     }
     canvas {
       display: block;
@@ -213,10 +241,20 @@ export function getPdfReaderHTML(
   </div>
 
   <div id="highlight-toolbar">
-    <div id="btn-highlight" style="display: flex; align-items: center; gap: 7px; user-select: none;">
-      <span style="width: 14px; height: 14px; border-radius: 50%; background: #FACC15; display: inline-block; box-shadow: 0 0 8px #FACC15;"></span>
+    <button id="btn-highlight" class="hl-btn" title="Resaltar">
+      <span class="hl-dot"></span>
       <span>Resaltar</span>
-    </div>
+    </button>
+    <div class="hl-divider"></div>
+    <button id="btn-copy" class="hl-btn" title="Copiar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Copiar</span>
+    </button>
+    <div class="hl-divider"></div>
+    <button id="btn-share" class="hl-btn" title="Compartir">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+      <span>Compartir</span>
+    </button>
   </div>
 
   <script>
@@ -666,10 +704,24 @@ export function getPdfReaderHTML(
 
         // Tap & Swipe handler
         if (e.changedTouches.length === 1 && !isPinching) {
+          // If the touch was inside the toolbar or near it, do not toggle bars or dismiss toolbar
+          var tbCheck = document.getElementById('highlight-toolbar');
+          if (tbCheck && tbCheck.style.display !== 'none' && e.changedTouches[0]) {
+            var tx = e.changedTouches[0].clientX;
+            var ty = e.changedTouches[0].clientY;
+            var tbRect = tbCheck.getBoundingClientRect();
+            if (tx >= tbRect.left - 15 && tx <= tbRect.right + 15 && ty >= tbRect.top - 15 && ty <= tbRect.bottom + 15) {
+              return;
+            }
+          }
+
           var activeSel = window.getSelection();
           var selectedStr = activeSel ? activeSel.toString().trim() : '';
           if (selectedStr.length > 0) {
             updateSelectionToolbar();
+            return;
+          } else if (activeSelectedText) {
+            // Keep toolbar visible if active selection was captured
             return;
           } else {
             hideSelectionToolbar();
@@ -709,6 +761,9 @@ export function getPdfReaderHTML(
         }
       }, false);
 
+      var activeSelectedText = '';
+      var activeSelectedRange = null;
+
       function updateSelectionToolbar() {
         var sel = window.getSelection();
         var txt = sel ? sel.toString().trim() : '';
@@ -717,8 +772,9 @@ export function getPdfReaderHTML(
 
         if (txt && txt.length > 0 && sel.rangeCount > 0) {
           try {
-            var range = sel.getRangeAt(0);
-            var rect = range.getBoundingClientRect();
+            activeSelectedText = txt;
+            activeSelectedRange = sel.getRangeAt(0).cloneRange();
+            var rect = activeSelectedRange.getBoundingClientRect();
             if (rect && rect.width > 0 && rect.height > 0) {
               var topPos = rect.top - 46;
               if (topPos < 50) {
@@ -733,10 +789,11 @@ export function getPdfReaderHTML(
             }
           } catch(e) {}
         }
-        toolbar.style.display = 'none';
       }
 
       function hideSelectionToolbar() {
+        activeSelectedText = '';
+        activeSelectedRange = null;
         var toolbar = document.getElementById('highlight-toolbar');
         if (toolbar) toolbar.style.display = 'none';
       }
@@ -748,13 +805,26 @@ export function getPdfReaderHTML(
       function highlightSelectionInTextLayer(color) {
         try {
           var sel = window.getSelection();
-          if (!sel || sel.rangeCount === 0) return;
+          var range = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0) : activeSelectedRange;
           var textLayer = document.getElementById('text-layer');
           if (!textLayer) return;
 
           var spans = textLayer.querySelectorAll('span');
           spans.forEach(function(span) {
-            if (sel.containsNode(span, true)) {
+            var matched = false;
+            try {
+              if (sel && sel.containsNode && sel.containsNode(span, true)) {
+                matched = true;
+              }
+            } catch(e1) {}
+            if (!matched && range) {
+              try {
+                if (range.intersectsNode && range.intersectsNode(span)) {
+                  matched = true;
+                }
+              } catch(e2) {}
+            }
+            if (matched) {
               span.style.backgroundColor = 'rgba(250, 204, 21, 0.45)';
               span.style.borderRadius = '2px';
               span.setAttribute('data-highlighted', 'true');
@@ -792,7 +862,7 @@ export function getPdfReaderHTML(
 
       function applyHighlight() {
         var sel = window.getSelection();
-        var txt = sel ? sel.toString().trim() : '';
+        var txt = (sel ? sel.toString().trim() : '') || activeSelectedText;
         if (txt && txt.length > 0) {
           highlightSelectionInTextLayer('#FACC15');
           pageHighlightsCache[currentPage] = pageHighlightsCache[currentPage] || [];
@@ -803,23 +873,146 @@ export function getPdfReaderHTML(
             page: currentPage,
             color: '#FACC15'
           });
-          if (sel.removeAllRanges) sel.removeAllRanges();
+          if (sel && sel.removeAllRanges) sel.removeAllRanges();
           hideSelectionToolbar();
         }
       }
 
+      function copySelection() {
+        var sel = window.getSelection();
+        var txt = (sel ? sel.toString().trim() : '') || activeSelectedText;
+        if (txt && txt.length > 0) {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(txt);
+            }
+          } catch(e) {}
+          sendToRN('COPY_TO_CLIPBOARD', { text: txt });
+          if (sel && sel.removeAllRanges) sel.removeAllRanges();
+          hideSelectionToolbar();
+        }
+      }
+
+      function shareSelection() {
+        var sel = window.getSelection();
+        var txt = (sel ? sel.toString().trim() : '') || activeSelectedText;
+        if (txt && txt.length > 0) {
+          // Highlight it first so it appears shaded in the page capture!
+          highlightSelectionInTextLayer('#FACC15');
+          pageHighlightsCache[currentPage] = pageHighlightsCache[currentPage] || [];
+          pageHighlightsCache[currentPage].push({ text: txt, color: '#FACC15' });
+          sendToRN('HIGHLIGHT_CREATED', {
+            text: txt,
+            page: currentPage,
+            color: '#FACC15'
+          });
+
+          sendToRN('SHARE_SELECTION', { text: txt, page: currentPage });
+          if (sel && sel.removeAllRanges) sel.removeAllRanges();
+          hideSelectionToolbar();
+
+          // Also trigger page capture so the user can share the full page image with the quote
+          setTimeout(function() {
+            capturePdfPage();
+          }, 150);
+        }
+      }
+
+      function capturePdfPage() {
+        var canvas = document.getElementById('pdf-canvas');
+        if (!canvas) {
+          sendToRN('PAGE_IMAGE_ERROR', { error: 'Lienzo no encontrado' });
+          return;
+        }
+        try {
+          var exportCanvas = document.createElement('canvas');
+          exportCanvas.width = canvas.width;
+          exportCanvas.height = canvas.height;
+          var ctx = exportCanvas.getContext('2d');
+
+          // 1. Draw page paper background
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+          // 2. Draw high resolution rendered PDF page
+          ctx.drawImage(canvas, 0, 0);
+
+          // 3. Draw highlighted text overlays directly onto the exported image
+          var textLayer = document.getElementById('text-layer');
+          if (textLayer) {
+            var wrapper = document.getElementById('canvas-wrapper');
+            var wrapRect = wrapper ? wrapper.getBoundingClientRect() : null;
+            if (wrapRect && wrapRect.width > 0 && wrapRect.height > 0) {
+              var scaleX = canvas.width / wrapRect.width;
+              var scaleY = canvas.height / wrapRect.height;
+
+              var highlightedSpans = textLayer.querySelectorAll('span[data-highlighted="true"]');
+              ctx.fillStyle = 'rgba(250, 204, 21, 0.45)';
+              highlightedSpans.forEach(function(sp) {
+                var r = sp.getBoundingClientRect();
+                var x = (r.left - wrapRect.left) * scaleX;
+                var y = (r.top - wrapRect.top) * scaleY;
+                var w = r.width * scaleX;
+                var h = r.height * scaleY;
+                ctx.fillRect(x, y, w, h);
+              });
+            }
+          }
+
+          var dataUrl = exportCanvas.toDataURL('image/jpeg', 0.95);
+          sendToRN('PAGE_IMAGE_CAPTURED', {
+            dataUrl: dataUrl,
+            page: currentPage,
+            totalPages: totalPages
+          });
+        } catch(err) {
+          console.error('Error al capturar imagen de página PDF:', err);
+          sendToRN('PAGE_IMAGE_ERROR', { error: err.message || 'Error al procesar imagen' });
+        }
+      }
+
+      var tbToolbar = document.getElementById('highlight-toolbar');
+      if (tbToolbar) {
+        tbToolbar.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: false });
+        tbToolbar.addEventListener('touchend', function(e) { e.stopPropagation(); }, { passive: false });
+        tbToolbar.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+        tbToolbar.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+      }
+
       var btnHl = document.getElementById('btn-highlight');
       if (btnHl) {
-        btnHl.addEventListener('pointerdown', function(e) {
+        var onHl = function(e) {
           e.preventDefault();
           e.stopPropagation();
           applyHighlight();
-        });
-        btnHl.addEventListener('click', function(e) {
+        };
+        btnHl.addEventListener('touchend', onHl);
+        btnHl.addEventListener('click', onHl);
+        btnHl.addEventListener('pointerdown', onHl);
+      }
+
+      var btnCp = document.getElementById('btn-copy');
+      if (btnCp) {
+        var onCp = function(e) {
           e.preventDefault();
           e.stopPropagation();
-          applyHighlight();
-        });
+          copySelection();
+        };
+        btnCp.addEventListener('touchend', onCp);
+        btnCp.addEventListener('click', onCp);
+        btnCp.addEventListener('pointerdown', onCp);
+      }
+
+      var btnSh = document.getElementById('btn-share');
+      if (btnSh) {
+        var onSh = function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          shareSelection();
+        };
+        btnSh.addEventListener('touchend', onSh);
+        btnSh.addEventListener('click', onSh);
+        btnSh.addEventListener('pointerdown', onSh);
       }
 
       var streamedPdfChunks = [];
@@ -851,6 +1044,8 @@ export function getPdfReaderHTML(
                 applySavedHighlights(data.payload.highlights);
               }
             }
+          } else if (data.type === 'CAPTURE_PAGE_IMAGE') {
+            capturePdfPage();
           } else if (data.type === 'NEXT_PAGE') {
             nextPage();
           } else if (data.type === 'PREV_PAGE') {

@@ -1,6 +1,7 @@
 import { ReadingSettings } from '../types/book';
 import { JSZIP_CODE } from './libs/jszipBundled';
 import { EPUB_JS_CODE } from './libs/epubjsBundled';
+import { HTML2CANVAS_CODE } from './libs/html2canvasBundled';
 
 export function getThemeColors(themeMode: string) {
   switch (themeMode) {
@@ -36,12 +37,16 @@ export function getEpubReaderHTML(
   <title>EPUB Reader - HD Page Flip</title>
   <script>${JSZIP_CODE}</script>
   <script>${EPUB_JS_CODE}</script>
+  <script>${HTML2CANVAS_CODE}</script>
   <script>
     if (typeof JSZip === 'undefined') {
       document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"><\\/script>');
     }
     if (typeof ePub === 'undefined') {
       document.write('<script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"><\\/script>');
+    }
+    if (typeof html2canvas === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\\/script>');
     }
   </script>
   <style>
@@ -58,8 +63,6 @@ export function getEpubReaderHTML(
       color: ${colors.text};
       overflow: hidden;
       font-family: ${settings.fontFamily || 'Serif'}, Georgia, serif;
-      user-select: none;
-      -webkit-user-select: none;
     }
     #reader-viewport {
       width: 100vw;
@@ -76,6 +79,55 @@ export function getEpubReaderHTML(
       transform-origin: center center;
       will-change: transform;
       background-color: ${colors.bg};
+    }
+    #highlight-toolbar {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      background: #0F172A;
+      color: #FFFFFF;
+      border-radius: 26px;
+      padding: 5px 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.25);
+      align-items: center;
+      gap: 4px;
+      border: 1px solid rgba(255,255,255,0.18);
+      transform: translate(-50%, -100%);
+      transition: opacity 0.15s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .hl-btn {
+      background: transparent;
+      border: none;
+      color: #FFFFFF;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 16px;
+      cursor: pointer;
+      outline: none;
+      font-family: inherit;
+    }
+    .hl-btn:active {
+      background: rgba(255,255,255,0.18);
+      transform: scale(0.96);
+    }
+    .hl-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #FACC15;
+      display: inline-block;
+      box-shadow: 0 0 8px #FACC15;
+    }
+    .hl-divider {
+      width: 1px;
+      height: 16px;
+      background: rgba(255,255,255,0.2);
     }
     #loading {
       position: absolute;
@@ -111,6 +163,23 @@ export function getEpubReaderHTML(
 
   <div id="reader-viewport">
     <div id="epub-viewer"></div>
+  </div>
+
+  <div id="highlight-toolbar">
+    <button id="btn-highlight" class="hl-btn" title="Resaltar">
+      <span class="hl-dot"></span>
+      <span>Resaltar</span>
+    </button>
+    <div class="hl-divider"></div>
+    <button id="btn-copy" class="hl-btn" title="Copiar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Copiar</span>
+    </button>
+    <div class="hl-divider"></div>
+    <button id="btn-share" class="hl-btn" title="Compartir">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+      <span>Compartir</span>
+    </button>
   </div>
 
   <script>
@@ -194,6 +263,45 @@ export function getEpubReaderHTML(
             return new ArrayBuffer(0);
           }
         }
+      }
+
+      var currentPageNum = 1;
+      var totalPagesCount = 100;
+      var currentCfiRange = null;
+      var currentSelectedText = '';
+      var epubHighlightsCache = [];
+
+      function hideSelectionToolbar() {
+        var tb = document.getElementById('highlight-toolbar');
+        if (tb) tb.style.display = 'none';
+      }
+
+      function updateEpubSelectionToolbar(sel, doc) {
+        var txt = sel ? sel.toString().trim() : '';
+        var tb = document.getElementById('highlight-toolbar');
+        if (!tb) return;
+        if (txt && txt.length > 0 && sel.rangeCount > 0) {
+          try {
+            currentSelectedText = txt;
+            var range = sel.getRangeAt(0);
+            var rect = range.getBoundingClientRect();
+            var iframe = document.querySelector('iframe');
+            var ifRect = iframe ? iframe.getBoundingClientRect() : { top: 0, left: 0 };
+
+            var top = ifRect.top + rect.top - 46;
+            if (top < 50) {
+              top = ifRect.top + rect.bottom + 14;
+            }
+            var left = ifRect.left + rect.left + (rect.width / 2);
+            left = Math.max(80, Math.min(window.innerWidth - 80, left));
+
+            tb.style.top = top + 'px';
+            tb.style.left = left + 'px';
+            tb.style.display = 'flex';
+            return;
+          } catch(e) {}
+        }
+        hideSelectionToolbar();
       }
 
       function applyStyles() {
@@ -308,9 +416,26 @@ export function getEpubReaderHTML(
 
           applyStyles();
 
-          // Hook iframe contents to register swipe gestures & single-tap fullscreen toggle inside EPUB pages
+          // Hook iframe contents to register selection and swipe gestures inside EPUB pages
           rendition.hooks.content.register(function(contents) {
             var doc = contents.document;
+            if (doc && doc.head && !doc.getElementById('epub-user-highlight-style')) {
+              var style = doc.createElement('style');
+              style.id = 'epub-user-highlight-style';
+              style.innerHTML = '::selection { background: rgba(250, 204, 21, 0.45) !important; color: inherit !important; } .user-highlight { background-color: rgba(250, 204, 21, 0.45) !important; border-radius: 2px !important; box-shadow: 0 0 2px rgba(234, 179, 8, 0.6) !important; color: inherit !important; }';
+              doc.head.appendChild(style);
+            }
+
+            if (doc && doc.body) {
+              doc.body.style.userSelect = 'text';
+              doc.body.style.webkitUserSelect = 'text';
+            }
+
+            doc.addEventListener('selectionchange', function() {
+              var sel = doc.getSelection();
+              updateEpubSelectionToolbar(sel, doc);
+            });
+
             var touchStartX = 0;
             var touchStartY = 0;
             var touchStartTime = 0;
@@ -325,6 +450,15 @@ export function getEpubReaderHTML(
 
             doc.addEventListener('touchend', function(e) {
               if (e.changedTouches.length === 1) {
+                var sel = doc.getSelection();
+                var selectedStr = sel ? sel.toString().trim() : '';
+                if (selectedStr.length > 0) {
+                  updateEpubSelectionToolbar(sel, doc);
+                  return;
+                } else {
+                  hideSelectionToolbar();
+                }
+
                 var touchEndX = e.changedTouches[0].clientX;
                 var touchEndY = e.changedTouches[0].clientY;
                 var diffX = touchEndX - touchStartX;
@@ -343,6 +477,33 @@ export function getEpubReaderHTML(
                 }
               }
             }, false);
+          });
+
+          // rendition selection listener
+          rendition.on('selected', function(cfiRange, contents) {
+            currentCfiRange = cfiRange;
+            try {
+              var range = rendition.getRange(cfiRange);
+              if (range) {
+                currentSelectedText = range.toString().trim();
+                var rect = range.getBoundingClientRect();
+                var iframe = document.querySelector('iframe');
+                var ifRect = iframe ? iframe.getBoundingClientRect() : { top: 0, left: 0 };
+                var top = ifRect.top + rect.top - 46;
+                if (top < 50) {
+                  top = ifRect.top + rect.bottom + 14;
+                }
+                var left = ifRect.left + rect.left + (rect.width / 2);
+                left = Math.max(80, Math.min(window.innerWidth - 80, left));
+
+                var tb = document.getElementById('highlight-toolbar');
+                if (tb) {
+                  tb.style.top = top + 'px';
+                  tb.style.left = left + 'px';
+                  tb.style.display = 'flex';
+                }
+              }
+            } catch(e) {}
           });
 
           var displayPromise;
@@ -512,13 +673,164 @@ export function getEpubReaderHTML(
         } catch(e) {}
       }
 
+      function highlightEpubTextSnippet(snippet, color) {
+        try {
+          var iframe = document.querySelector('iframe');
+          if (!iframe || !iframe.contentDocument) return;
+          var doc = iframe.contentDocument;
+          var body = doc.body;
+          if (!body || !snippet || !snippet.trim()) return;
+
+          var clean = snippet.trim();
+          var searchTargets = [
+            clean,
+            clean.length > 30 ? clean.substring(0, 30) : null,
+            clean.length > 20 ? clean.substring(0, 20) : null,
+            clean.length > 12 ? clean.substring(0, 12) : null,
+          ].filter(Boolean);
+
+          var walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+          var node;
+          while ((node = walker.nextNode())) {
+            var val = node.nodeValue;
+            if (!val || !val.trim()) continue;
+
+            for (var i = 0; i < searchTargets.length; i++) {
+              var target = searchTargets[i];
+              var matchIndex = val.toLowerCase().indexOf(target.toLowerCase());
+              if (matchIndex !== -1) {
+                var span = doc.createElement('mark');
+                span.className = 'user-highlight';
+                span.setAttribute('data-highlighted', 'true');
+                span.style.backgroundColor = 'rgba(250, 204, 21, 0.45)';
+                span.style.borderRadius = '2px';
+                span.style.boxShadow = '0 0 2px rgba(234, 179, 8, 0.6)';
+
+                var afterNode = node.splitText(matchIndex);
+                afterNode.nodeValue = afterNode.nodeValue.substring(target.length);
+
+                span.appendChild(doc.createTextNode(val.substring(matchIndex, matchIndex + target.length)));
+                node.parentNode.insertBefore(span, afterNode);
+                return;
+              }
+            }
+          }
+        } catch(e) {}
+      }
+
+      function applySavedEpubHighlights(highlights) {
+        if (!highlights || !highlights.length) return;
+        highlights.forEach(function(h) {
+          if (h && (h.text || h.snippet)) {
+            highlightEpubTextSnippet(h.text || h.snippet, h.color || '#FACC15');
+          }
+        });
+      }
+
+      function applyEpubHighlight() {
+        if (!currentSelectedText) return;
+        var txt = currentSelectedText;
+        var cfi = currentCfiRange || '';
+
+        highlightEpubTextSnippet(txt, '#FACC15');
+        epubHighlightsCache.push({ text: txt, color: '#FACC15' });
+
+        sendToRN('HIGHLIGHT_CREATED', {
+          text: txt,
+          cfi: cfi,
+          page: currentPageNum || 1,
+          color: '#FACC15'
+        });
+
+        hideSelectionToolbar();
+      }
+
+      function copyEpubSelection() {
+        if (currentSelectedText) {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(currentSelectedText);
+            }
+          } catch(e) {}
+          sendToRN('COPY_TO_CLIPBOARD', { text: currentSelectedText });
+          hideSelectionToolbar();
+        }
+      }
+
+      function shareEpubSelection() {
+        if (currentSelectedText) {
+          applyEpubHighlight();
+          sendToRN('SHARE_SELECTION', { text: currentSelectedText, page: currentPageNum || 1 });
+          hideSelectionToolbar();
+          setTimeout(function() {
+            captureEpubPage();
+          }, 120);
+        }
+      }
+
+      var tbToolbar = document.getElementById('highlight-toolbar');
+      if (tbToolbar) {
+        tbToolbar.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: false });
+        tbToolbar.addEventListener('touchend', function(e) { e.stopPropagation(); }, { passive: false });
+        tbToolbar.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+        tbToolbar.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+      }
+
+      var btnHl = document.getElementById('btn-highlight');
+      if (btnHl) {
+        var onEpubHl = function(e) { e.preventDefault(); e.stopPropagation(); applyEpubHighlight(); };
+        btnHl.addEventListener('touchend', onEpubHl);
+        btnHl.addEventListener('pointerdown', onEpubHl);
+        btnHl.addEventListener('click', onEpubHl);
+      }
+
+      var btnCp = document.getElementById('btn-copy');
+      if (btnCp) {
+        var onEpubCp = function(e) { e.preventDefault(); e.stopPropagation(); copyEpubSelection(); };
+        btnCp.addEventListener('touchend', onEpubCp);
+        btnCp.addEventListener('pointerdown', onEpubCp);
+        btnCp.addEventListener('click', onEpubCp);
+      }
+
+      var btnSh = document.getElementById('btn-share');
+      if (btnSh) {
+        var onEpubSh = function(e) { e.preventDefault(); e.stopPropagation(); shareEpubSelection(); };
+        btnSh.addEventListener('touchend', onEpubSh);
+        btnSh.addEventListener('pointerdown', onEpubSh);
+        btnSh.addEventListener('click', onEpubSh);
+      }
+
+      async function captureEpubPage() {
+        try {
+          var iframe = document.querySelector('iframe');
+          if (!iframe || !iframe.contentDocument) {
+            sendToRN('PAGE_IMAGE_ERROR', { error: 'Lector EPUB no listo' });
+            return;
+          }
+          var targetEl = iframe.contentDocument.body || iframe.contentDocument.documentElement;
+          if (typeof html2canvas !== 'undefined') {
+            var canvas = await html2canvas(targetEl, {
+              backgroundColor: document.body.style.backgroundColor || '#FFFFFF',
+              scale: 2.0,
+              useCORS: true,
+              logging: false
+            });
+            var dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+            sendToRN('PAGE_IMAGE_CAPTURED', {
+              dataUrl: dataUrl,
+              page: currentPageNum || 1,
+              totalPages: totalPagesCount || 100
+            });
+          } else {
+            sendToRN('PAGE_IMAGE_ERROR', { error: 'html2canvas no disponible' });
+          }
+        } catch(err) {
+          console.error('Error al capturar imagen de página EPUB:', err);
+          sendToRN('PAGE_IMAGE_ERROR', { error: err.message || 'Error capturando EPUB' });
+        }
+      }
+
       // React Native WebView message handler
-      // NOTA CORRECCIÓN DE ERRORES:
-      // 1. En Android WebView, los eventos postMessage se despachan a 'document' y no únicamente a 'window'.
-      //    Se registran oyentes en ambos ('window' y 'document') para garantizar que los saltos de lectura funcionen en cualquier dispositivo.
-      // 2. rendition.display(target) en epub.js REQUIERE una cadena CFI o un 'href' (book.spine.items[i].href).
-      //    Pasar un número entero (ej. 0 o 5) lanzaba un TypeError no capturado (target.indexOf is not a function).
-      // 3. Se incluye un fallback a 'spine.items[idx].href' si 'book.locations' no ha terminado de calcularse en segundo plano.
       var streamedEpubChunks = [];
       function handleMessage(event) {
         try {
@@ -542,6 +854,13 @@ export function getEpubReaderHTML(
               fileData = data.payload.base64;
               isB64 = true;
               initEpub();
+            }
+          } else if (data.type === 'CAPTURE_PAGE_IMAGE') {
+            captureEpubPage();
+          } else if (data.type === 'LOAD_PAGE_HIGHLIGHTS') {
+            if (data.payload && data.payload.highlights) {
+              epubHighlightsCache = data.payload.highlights;
+              applySavedEpubHighlights(data.payload.highlights);
             }
           } else if (data.type === 'NEXT_PAGE') {
             nextPage();
