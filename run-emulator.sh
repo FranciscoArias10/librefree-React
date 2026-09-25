@@ -13,8 +13,8 @@ if adb devices | grep -q "emulator"; then
 fi
 
 echo "🚀 Iniciando emulador Android '$AVD_NAME'..."
-nohup emulator -avd "$AVD_NAME" -gpu auto -no-snapshot -netdelay none -netspeed full > /tmp/emulator.log 2>&1 &
-disown
+rm -f "$HOME/.android/avd/$AVD_NAME.avd/"*.lock 2>/dev/null
+setsid emulator -avd "$AVD_NAME" -gpu host -memory 1536 -no-boot-anim -netdelay none -netspeed full -no-snapshot </dev/null > /tmp/emulator.log 2>&1 &
 
 echo "⏳ Conectando con ADB..."
 adb wait-for-device
