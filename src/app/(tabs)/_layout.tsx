@@ -31,6 +31,7 @@ export default function TabsLayout() {
           borderWidth: 1,
           borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
           elevation: 12,
+          zIndex: 100,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 8 },
           shadowOpacity: isDark ? 0.4 : 0.15,

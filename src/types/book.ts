@@ -10,6 +10,7 @@ export interface ReadingSettings {
   themeMode: ReadingThemeMode; // light, sepia, dark, oled
   textAlignment: 'left' | 'justify' | 'center';
   isContinuousScroll: boolean;
+  selectedVoiceIdentifier?: string;
 }
 
 export interface Bookmark {

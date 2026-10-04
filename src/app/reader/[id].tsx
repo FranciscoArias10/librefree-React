@@ -24,7 +24,7 @@ import { getTxtReaderHTML } from '../../reader/TxtReaderHTML';
 import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
 import { ReaderControlsModal } from '../../components/ReaderControlsModal';
 import { AudioPlayerModal } from '../../components/AudioPlayerModal';
-import { speakText, stopSpeech, startTTSBook, stopTTS, splitTextIntoChunks, findMatchingChunkIndex } from '../../services/ttsService';
+import { speakText, stopSpeech, startTTSBook, stopTTS, splitTextIntoChunks, findMatchingChunkIndex, setTTSVoice } from '../../services/ttsService';
 import { Book, Bookmark, ReadingSettings } from '../../types/book';
 import { Toast } from '../../components/Toast';
 import { Feather, FontAwesome } from '@expo/vector-icons';
@@ -249,6 +249,9 @@ export default function ReaderScreen() {
         const b = await getBookById(id);
         const s = await getReadingSettings();
         setSettings(s);
+        if (s.selectedVoiceIdentifier) {
+          setTTSVoice(s.selectedVoiceIdentifier);
+        }
 
         const bms = await getBookmarks(id);
         setBookBookmarks(bms);

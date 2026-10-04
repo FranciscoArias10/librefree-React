@@ -6,6 +6,7 @@
 ---
 
 ### ✅ Tareas Completadas Recientemente
+- [x] **Catálogo y Selección de Voces (TTS)**: Permite listar, filtrar (español / todos los idiomas), probar muestra en vivo ("Probar Voz") y seleccionar voces específicas instaladas en el dispositivo (masculinas, femeninas, acentos regionalizados) desde Ajustes y guardarlas persistentemente.
 - [x] **Lectura por Voz desde la página actual (TTS)**: Arreglado el inicio de la síntesis de voz (`startTTSBook`) usando coincidencia de fragmento de texto (`findMatchingChunkIndex`) para que la lectura empiece en la página que estás leyendo (ej. Página 30) y continúe leyendo en voz alta las siguientes páginas sin devolverse a la primera página.
 - [x] **Subida y control de versiones Git**: Repositorio en GitHub sincronizado en la rama `master`.
 - [x] **Sintetizador de Velocidad Continuo (0.75x a 2.0x)**: Cambio de velocidad de voz dinámico sin reinicio de frase.
@@ -15,7 +16,7 @@
 ### 📌 Tareas Pendientes (Roadmap de Desarrollo)
 
 #### 1. 🗣️ Voces y Sintetizador de Voz (TTS)
-- [ ] **Selector de Voces de Expo Speech**: Permitir al usuario listar y elegir entre distintas voces instaladas en el sistema (voces masculinas, femeninas, acentos regionalizados de español) desde la pantalla de Ajustes.
+- [x] **Selector de Voces de Expo Speech**: Permitir al usuario listar y elegir entre distintas voces instaladas en el sistema (voces masculinas, femeninas, acentos regionalizados de español) desde la pantalla de Ajustes.
 
 #### 2. 🔖 Marcadores y Recortes de Páginas
 - [ ] **Mejoras al Marcador de Páginas**: Refinar el sistema de guardado de posición/página, permitiendo agregar notas breves a cada marcador y visualizarlas de forma clara en la pantalla principal y en el lector.

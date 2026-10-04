@@ -16,6 +16,50 @@ let onFinishCallback: (() => void) | null = null;
 let isSpeakingActive = false;
 let isManualChange = false;
 let activeBookId: string | null = null;
+let activeVoiceIdentifier: string | null = null;
+
+export function setTTSVoice(voiceIdentifier: string | null) {
+  activeVoiceIdentifier = voiceIdentifier || null;
+}
+
+export function getTTSVoice(): string | null {
+  return activeVoiceIdentifier;
+}
+
+export async function fetchDeviceVoices(): Promise<Speech.Voice[]> {
+  try {
+    const voices = await Speech.getAvailableVoicesAsync();
+    return voices || [];
+  } catch (err) {
+    console.warn('Error al obtener voces del dispositivo:', err);
+    return [];
+  }
+}
+
+export async function testVoiceSample(
+  voiceIdentifier?: string,
+  sampleText: string = 'Hola, esta es una prueba de la voz seleccionada para la lectura en voz alta en LibreFree.',
+  onDone?: () => void
+) {
+  stopTTS();
+  const options: Speech.SpeechOptions = {
+    language: 'es-ES',
+    rate: currentRate || 1.0,
+    pitch: 1.0,
+    onDone: () => {
+      if (onDone) onDone();
+    },
+    onError: () => {
+      if (onDone) onDone();
+    },
+  };
+  if (voiceIdentifier) {
+    options.voice = voiceIdentifier;
+  } else if (activeVoiceIdentifier) {
+    options.voice = activeVoiceIdentifier;
+  }
+  Speech.speak(sampleText, options);
+}
 
 export function splitTextIntoChunks(text: string, chunkSize: number = 250): string[] {
   if (!text) return [];
@@ -142,7 +186,7 @@ function speakCurrentChunk() {
     onProgressCallback(chunkIndexToRead, chunks.length, textToSpeak);
   }
 
-  Speech.speak(textToSpeak, {
+  const options: Speech.SpeechOptions = {
     language: 'es-ES',
     rate: currentRate,
     pitch: 1.0,
@@ -163,7 +207,13 @@ function speakCurrentChunk() {
         speakCurrentChunk();
       }
     },
-  });
+  };
+
+  if (activeVoiceIdentifier) {
+    options.voice = activeVoiceIdentifier;
+  }
+
+  Speech.speak(textToSpeak, options);
 }
 
 export function pauseTTS() {

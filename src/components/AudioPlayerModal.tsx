@@ -15,7 +15,7 @@ import { Feather, FontAwesome } from '@expo/vector-icons';
 import { Book } from '../types/book';
 import { useTheme } from '../context/ThemeContext';
 import { extractTextFromBook } from '../services/fileScanner';
-import { updateBookProgress } from '../services/database';
+import { updateBookProgress, getReadingSettings } from '../services/database';
 import {
   startTTSBook,
   pauseTTS,
@@ -26,6 +26,7 @@ import {
   splitTextIntoChunks,
   findMatchingChunkIndex,
   isTTSSpeakingForBook,
+  setTTSVoice,
 } from '../services/ttsService';
 import {
   loadAudiobookTrack,
@@ -128,6 +129,10 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
         // PDF, EPUB, TXT -> TTS Generation starting from exact progress percentage!
         try {
           setIsGenerating(true);
+          const s = await getReadingSettings();
+          if (s.selectedVoiceIdentifier) {
+            setTTSVoice(s.selectedVoiceIdentifier);
+          }
           const textToRead = await extractTextFromBook(book!);
           if (!isMounted) return;
 
