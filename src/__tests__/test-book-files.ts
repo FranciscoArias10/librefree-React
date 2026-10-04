@@ -3,17 +3,10 @@ import path from 'path';
 import { getPdfReaderHTML } from '../reader/PdfReaderHTML';
 import { getEpubReaderHTML } from '../reader/EpubReaderHTML';
 import { getTxtReaderHTML } from '../reader/TxtReaderHTML';
+import { DEFAULT_SETTINGS } from '../services/database';
 import { ReadingSettings } from '../types/book';
 
-const defaultSettings: ReadingSettings = {
-  fontSize: 18,
-  fontFamily: 'Serif',
-  lineHeight: 1.6,
-  marginSize: 20,
-  themeMode: 'sepia',
-  textAlignment: 'left',
-  isContinuousScroll: false,
-};
+const defaultSettings: ReadingSettings = DEFAULT_SETTINGS;
 
 export async function runBookFilesTests(): Promise<{ passed: number; failed: number }> {
   let passed = 0;

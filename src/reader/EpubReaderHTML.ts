@@ -304,24 +304,44 @@ export function getEpubReaderHTML(
         hideSelectionToolbar();
       }
 
-      function applyStyles() {
+      var activeSettings = {
+        themeMode: ${JSON.stringify(settings.themeMode || 'sepia')},
+        fontSize: ${settings.fontSize || 18},
+        fontFamily: ${JSON.stringify(settings.fontFamily || 'Serif')},
+        lineHeight: ${settings.lineHeight || 1.6},
+        marginSize: ${settings.marginSize || 20},
+        textAlignment: ${JSON.stringify(settings.textAlignment || 'left')}
+      };
+
+      function applyStyles(newSettings) {
         if (!rendition) return;
+        if (newSettings) {
+          Object.assign(activeSettings, newSettings);
+        }
+        var s = activeSettings;
+        var bg = '#FFFFFF', txt = '#111111';
+        if (s.themeMode === 'sepia') { bg = '#F8F1E3'; txt = '#433422'; }
+        else if (s.themeMode === 'dark') { bg = '#1E1E2E'; txt = '#CDD6F4'; }
+        else if (s.themeMode === 'oled') { bg = '#000000'; txt = '#E0E0E0'; }
+
         rendition.themes.default({
           'body': {
-            'background-color': '${colors.bg} !important',
-            'color': '${colors.text} !important',
-            'font-family': '${settings.fontFamily || 'Serif'}, Georgia, serif !important',
-            'font-size': '${settings.fontSize || 18}px !important',
-            'line-height': '${settings.lineHeight || 1.6} !important',
-            'padding': '10px ${settings.marginSize || 16}px !important'
+            'background-color': bg + ' !important',
+            'color': txt + ' !important',
+            'font-family': (s.fontFamily || 'Serif') + ', Georgia, serif !important',
+            'font-size': (s.fontSize || 18) + 'px !important',
+            'line-height': (s.lineHeight || 1.6) + ' !important',
+            'padding': '10px ' + (s.marginSize || 20) + 'px !important',
+            'text-align': (s.textAlignment || 'left') + ' !important'
           },
           'p': {
-            'color': '${colors.text} !important',
-            'font-size': '${settings.fontSize || 18}px !important',
-            'line-height': '${settings.lineHeight || 1.6} !important'
+            'color': txt + ' !important',
+            'font-size': (s.fontSize || 18) + 'px !important',
+            'line-height': (s.lineHeight || 1.6) + ' !important',
+            'text-align': (s.textAlignment || 'left') + ' !important'
           },
           'h1, h2, h3, h4, h5, h6': {
-            'color': '${colors.text} !important'
+            'color': txt + ' !important'
           }
         });
       }
@@ -900,14 +920,16 @@ export function getEpubReaderHTML(
             }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;
-            if (s.themeMode && rendition) {
-              var bg = '#FFFFFF', txt = '#111111';
-              if (s.themeMode === 'sepia') { bg = '#F8F1E3'; txt = '#433422'; }
-              else if (s.themeMode === 'dark') { bg = '#1E1E2E'; txt = '#CDD6F4'; }
-              else if (s.themeMode === 'oled') { bg = '#000000'; txt = '#E0E0E0'; }
-              document.body.style.backgroundColor = bg;
-              document.body.style.color = txt;
-              applyStyles();
+            if (s) {
+              if (s.themeMode) {
+                var bg = '#FFFFFF', txt = '#111111';
+                if (s.themeMode === 'sepia') { bg = '#F8F1E3'; txt = '#433422'; }
+                else if (s.themeMode === 'dark') { bg = '#1E1E2E'; txt = '#CDD6F4'; }
+                else if (s.themeMode === 'oled') { bg = '#000000'; txt = '#E0E0E0'; }
+                document.body.style.backgroundColor = bg;
+                document.body.style.color = txt;
+              }
+              applyStyles(s);
             }
           }
         } catch(e) {}

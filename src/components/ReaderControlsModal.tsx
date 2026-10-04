@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
-import { ReadingSettings, ReadingThemeMode } from '../types/book';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Switch } from 'react-native';
+import { ReadingSettings, ReadingThemeMode, PdfPageFit, PdfContrastMode, TextAlignmentMode } from '../types/book';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 
@@ -29,7 +29,31 @@ export const ReaderControlsModal: React.FC<ReaderControlsModalProps> = ({
     { mode: 'oled', label: 'OLED', bg: '#000000', text: '#E0E0E0' },
   ];
 
-  const fontFamilies = ['Serif', 'Sans-Serif', 'Monospace', 'Georgia'];
+  const fontFamilies = ['Serif', 'Sans-Serif', 'Monospace', 'Georgia', 'Merriweather'];
+
+  const pdfFits: { mode: PdfPageFit; label: string; icon: keyof typeof Feather.glyphMap; desc: string }[] = [
+    { mode: 'fitPage', label: 'Página Completa', icon: 'maximize-2', desc: 'Ajusta la página entera en pantalla' },
+    { mode: 'fitWidth', label: 'Ajustar al Ancho', icon: 'move', desc: 'Maximiza el ancho y permite desplazamiento' },
+    { mode: 'fitHeight', label: 'Ajustar a Altura', icon: 'more-vertical', desc: 'Optimiza la lectura vertical' },
+  ];
+
+  const pdfContrasts: { mode: PdfContrastMode; label: string }[] = [
+    { mode: 'normal', label: 'Estándar' },
+    { mode: 'high', label: 'Alto Contraste' },
+    { mode: 'soft', label: 'Suave / Descanso' },
+  ];
+
+  const marginOptions: { size: number; label: string }[] = [
+    { size: 10, label: 'Estrecho (10px)' },
+    { size: 20, label: 'Normal (20px)' },
+    { size: 32, label: 'Ancho (32px)' },
+  ];
+
+  const alignments: { mode: TextAlignmentMode; label: string; icon: keyof typeof Feather.glyphMap }[] = [
+    { mode: 'left', label: 'Izquierda', icon: 'align-left' },
+    { mode: 'justify', label: 'Justificado', icon: 'align-justify' },
+    { mode: 'center', label: 'Centro', icon: 'align-center' },
+  ];
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -45,10 +69,10 @@ export const ReaderControlsModal: React.FC<ReaderControlsModalProps> = ({
           <View style={[styles.header, { borderBottomColor: theme.border }]}>
             <View>
               <Text style={[styles.headerTitle, { color: theme.textCard }]}>
-                Ajustes de {isPdf ? 'PDF' : 'EPUB'}
+                Ajustes de {isPdf ? 'PDF (Diseño Fijo)' : 'EPUB / Texto (Adaptable)'}
               </Text>
               <Text style={[styles.headerSub, { color: theme.textSecondary }]}>
-                Personaliza la apariencia del lector
+                {isPdf ? 'Ajustes independientes de visualización y nitidez' : 'Personaliza la tipografía y márgenes del libro'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -57,7 +81,7 @@ export const ReaderControlsModal: React.FC<ReaderControlsModalProps> = ({
           </View>
 
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-            {/* Theme Selector - Applicable to BOTH PDF and EPUB */}
+            {/* Tono & Modo de Lectura */}
             <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Tono & Modo de Lectura</Text>
             <View style={styles.themeGrid}>
               {themes.map((t) => (
@@ -76,18 +100,85 @@ export const ReaderControlsModal: React.FC<ReaderControlsModalProps> = ({
             </View>
 
             {isPdf ? (
-              /* PDF Format Info Banner */
-              <View style={[styles.pdfInfoBox, { backgroundColor: theme.bgChip, borderColor: theme.border }]}>
-                <Feather name="info" size={18} color={theme.accent} style={{ marginRight: 10, marginTop: 2 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.pdfInfoTitle, { color: theme.textCard }]}>Formato de Documento Fijo (PDF)</Text>
-                  <Text style={[styles.pdfInfoDesc, { color: theme.textSecondary }]}>
-                    Los archivos PDF mantienen el diseño y tamaño de fuente original del documento. Puedes usar el selector de arriba para cambiar el tono de color (Modo Noche, Sepia o Día).
-                  </Text>
+              /* PDF Format Independent Controls */
+              <>
+                {/* PDF Page Fit Options */}
+                <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Ajuste de Vista de Página (PDF)</Text>
+                <View style={styles.optionsColumn}>
+                  {pdfFits.map((fit) => {
+                    const isSelected = (settings.pdfPageFit || 'fitPage') === fit.mode;
+                    return (
+                      <TouchableOpacity
+                        key={fit.mode}
+                        style={[
+                          styles.optionCard,
+                          { backgroundColor: isSelected ? theme.accent + '15' : theme.bgInput, borderColor: isSelected ? theme.accent : theme.border },
+                        ]}
+                        onPress={() => onUpdateSettings({ pdfPageFit: fit.mode })}
+                      >
+                        <View style={[styles.optionIconBox, { backgroundColor: isSelected ? theme.accent : theme.bgChip }]}>
+                          <Feather name={fit.icon} size={16} color={isSelected ? theme.accentText : theme.textCard} />
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={[styles.optionTitle, { color: theme.textCard }]}>{fit.label}</Text>
+                          <Text style={[styles.optionDesc, { color: theme.textSecondary }]}>{fit.desc}</Text>
+                        </View>
+                        {isSelected && <Feather name="check" size={18} color={theme.accent} />}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-              </View>
+
+                {/* PDF Contrast Options */}
+                <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Filtro de Contraste y Nitidez</Text>
+                <View style={styles.chipsRow}>
+                  {pdfContrasts.map((c) => {
+                    const isSelected = (settings.pdfContrast || 'normal') === c.mode;
+                    return (
+                      <TouchableOpacity
+                        key={c.mode}
+                        style={[
+                          styles.chip,
+                          { backgroundColor: isSelected ? theme.accent : theme.bgChip },
+                        ]}
+                        onPress={() => onUpdateSettings({ pdfContrast: c.mode })}
+                      >
+                        <Text style={[styles.chipText, { color: isSelected ? theme.accentText : theme.textChip }]}>
+                          {c.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* PDF Color Inversion Switch */}
+                <View style={[styles.switchRow, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.switchLabel, { color: theme.textCard }]}>Inversión Nocturna de Páginas</Text>
+                    <Text style={[styles.switchSub, { color: theme.textSecondary }]}>
+                      Invierte los colores de las páginas PDF para lectura con luz tenue.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={Boolean(settings.pdfInvertColors)}
+                    onValueChange={(val) => onUpdateSettings({ pdfInvertColors: val })}
+                    trackColor={{ false: theme.border, true: theme.accent }}
+                  />
+                </View>
+
+                {/* PDF Info Banner */}
+                <View style={[styles.pdfInfoBox, { backgroundColor: theme.bgChip, borderColor: theme.border }]}>
+                  <Feather name="info" size={16} color={theme.accent} style={{ marginRight: 10, marginTop: 2 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.pdfInfoTitle, { color: theme.textCard }]}>Nota de Zoom en PDF</Text>
+                    <Text style={[styles.pdfInfoDesc, { color: theme.textSecondary }]}>
+                      Los PDF mantienen su composición original. Puedes realizar doble toque o gesto de pellizco en la página para hacer zoom libre en cualquier momento.
+                    </Text>
+                  </View>
+                </View>
+              </>
             ) : (
-              /* EPUB & TXT Reflowable Text Options */
+              /* EPUB & TXT Independent Controls */
               <>
                 {/* Font Size */}
                 <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
@@ -102,7 +193,7 @@ export const ReaderControlsModal: React.FC<ReaderControlsModalProps> = ({
                   </TouchableOpacity>
 
                   <View style={styles.fontSizePreview}>
-                    <Text style={{ fontSize: settings.fontSize, color: theme.textCard }}>Texto de muestra</Text>
+                    <Text style={{ fontSize: Math.min(22, settings.fontSize), color: theme.textCard }}>Texto de muestra ({settings.fontSize}px)</Text>
                   </View>
 
                   <TouchableOpacity
@@ -115,26 +206,24 @@ export const ReaderControlsModal: React.FC<ReaderControlsModalProps> = ({
 
                 {/* Typography / Font Family */}
                 <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Tipografía</Text>
-                <View style={styles.fontRow}>
-                  {fontFamilies.map((font) => (
-                    <TouchableOpacity
-                      key={font}
-                      style={[
-                        styles.fontChip,
-                        { backgroundColor: settings.fontFamily === font ? theme.accent : theme.bgChip },
-                      ]}
-                      onPress={() => onUpdateSettings({ fontFamily: font })}
-                    >
-                      <Text
+                <View style={styles.chipsRow}>
+                  {fontFamilies.map((font) => {
+                    const isSelected = settings.fontFamily === font;
+                    return (
+                      <TouchableOpacity
+                        key={font}
                         style={[
-                          styles.fontChipText,
-                          { color: settings.fontFamily === font ? theme.accentText : theme.textChip },
+                          styles.chip,
+                          { backgroundColor: isSelected ? theme.accent : theme.bgChip },
                         ]}
+                        onPress={() => onUpdateSettings({ fontFamily: font })}
                       >
-                        {font}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text style={[styles.chipText, { color: isSelected ? theme.accentText : theme.textChip }]}>
+                          {font}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
                 {/* Line Height */}
@@ -158,6 +247,51 @@ export const ReaderControlsModal: React.FC<ReaderControlsModalProps> = ({
                     <Text style={[styles.adjustBtnText, { color: theme.textCard }]}>+</Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* Margins */}
+                <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Márgenes Laterales</Text>
+                <View style={styles.chipsRow}>
+                  {marginOptions.map((m) => {
+                    const isSelected = (settings.marginSize || 20) === m.size;
+                    return (
+                      <TouchableOpacity
+                        key={m.size}
+                        style={[
+                          styles.chip,
+                          { backgroundColor: isSelected ? theme.accent : theme.bgChip },
+                        ]}
+                        onPress={() => onUpdateSettings({ marginSize: m.size })}
+                      >
+                        <Text style={[styles.chipText, { color: isSelected ? theme.accentText : theme.textChip }]}>
+                          {m.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Text Alignment */}
+                <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Alineación del Texto</Text>
+                <View style={styles.chipsRow}>
+                  {alignments.map((a) => {
+                    const isSelected = (settings.textAlignment || 'left') === a.mode;
+                    return (
+                      <TouchableOpacity
+                        key={a.mode}
+                        style={[
+                          styles.chip,
+                          { backgroundColor: isSelected ? theme.accent : theme.bgChip, flexDirection: 'row', alignItems: 'center', gap: 6 },
+                        ]}
+                        onPress={() => onUpdateSettings({ textAlignment: a.mode })}
+                      >
+                        <Feather name={a.icon} size={14} color={isSelected ? theme.accentText : theme.textChip} />
+                        <Text style={[styles.chipText, { color: isSelected ? theme.accentText : theme.textChip }]}>
+                          {a.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </>
             )}
           </ScrollView>
@@ -176,7 +310,7 @@ const styles = StyleSheet.create({
   modalContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '80%',
+    maxHeight: '85%',
     paddingBottom: 30,
     borderTopWidth: 1,
   },
@@ -189,7 +323,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   headerTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
   },
   headerSub: {
@@ -205,7 +339,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',
-    marginTop: 14,
+    marginTop: 16,
     marginBottom: 10,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -216,7 +350,7 @@ const styles = StyleSheet.create({
   },
   themeCard: {
     width: '23%',
-    height: 48,
+    height: 46,
     borderRadius: 12,
     borderWidth: 2,
     justifyContent: 'center',
@@ -233,12 +367,55 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  optionsColumn: {
+    gap: 8,
+  },
+  optionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  optionIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  optionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  optionDesc: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 14,
+  },
+  switchLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  switchSub: {
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 15,
+  },
   pdfInfoBox: {
     flexDirection: 'row',
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    marginTop: 20,
+    marginTop: 16,
     marginBottom: 10,
   },
   pdfInfoTitle: {
@@ -277,18 +454,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  fontRow: {
+  chipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  fontChip: {
+  chip: {
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 12,
   },
-  fontChipText: {
+  chipText: {
     fontSize: 12,
     fontWeight: '700',
   },
 });
+

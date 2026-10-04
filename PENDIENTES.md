@@ -6,6 +6,7 @@
 ---
 
 ### ✅ Tareas Completadas Recientemente
+- [x] **Configuraciones Específicas por Formato (PDF vs EPUB)**: Opciones de lectura 100% independientes en `ReaderControlsModal` y Ajustes: Ajuste de vista (`pdfPageFit`: *Página Completa*, *Ajustar al Ancho*, *Ajustar a Altura*), contraste (*Alto Contraste*, *Suave*) e inversión nocturna para PDF; y tipografía, tamaño de letra, interlineado, márgenes y alineación para EPUB/TXT.
 - [x] **Catálogo y Selección de Voces (TTS)**: Permite listar, filtrar (español / todos los idiomas), probar muestra en vivo ("Probar Voz") y seleccionar voces específicas instaladas en el dispositivo (masculinas, femeninas, acentos regionalizados) desde Ajustes y guardarlas persistentemente.
 - [x] **Lectura por Voz desde la página actual (TTS)**: Arreglado el inicio de la síntesis de voz (`startTTSBook`) usando coincidencia de fragmento de texto (`findMatchingChunkIndex`) para que la lectura empiece en la página que estás leyendo (ej. Página 30) y continúe leyendo en voz alta las siguientes páginas sin devolverse a la primera página.
 - [x] **Subida y control de versiones Git**: Repositorio en GitHub sincronizado en la rama `master`.
@@ -28,7 +29,7 @@
 - [ ] **Gestión de Perfiles / Cuentas**: Definir la estructura de la base de datos local SQLite para soportar múltiples perfiles de lectura o sincronización opcional en la nube.
 
 #### 5. ⚙️ Configuraciones Específicas por Formato (PDF vs EPUB)
-- [ ] **Ajustes Independientes**: Separar las opciones de tipografía, tamaño de letra y márgenes para EPUB de las opciones de zoom y ajuste de ancho para PDF.
+- [x] **Ajustes Independientes**: Separar las opciones de tipografía, tamaño de letra y márgenes para EPUB de las opciones de zoom y ajuste de ancho para PDF.
 
 #### 6. 🔘 Botones de Cambio de Página Inferiores
 - [ ] **Botones Directos al lado del Contador de Páginas**: Optimizar los botones de navegación previa/siguiente en la barra flotante inferior en PDF y EPUB.

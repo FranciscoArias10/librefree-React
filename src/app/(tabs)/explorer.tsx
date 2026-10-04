@@ -26,7 +26,7 @@ import {
 } from '../../services/fileScanner';
 import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
 import { getEpubReaderHTML } from '../../reader/EpubReaderHTML';
-import { getAllBooks } from '../../services/database';
+import { getAllBooks, DEFAULT_SETTINGS } from '../../services/database';
 import { Book, ReadingSettings } from '../../types/book';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
@@ -34,16 +34,6 @@ import { Toast } from '../../components/Toast';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 48) / 2;
-
-const DEFAULT_SETTINGS: ReadingSettings = {
-  fontSize: 18,
-  fontFamily: 'Serif',
-  lineHeight: 1.6,
-  marginSize: 20,
-  themeMode: 'light',
-  textAlignment: 'left',
-  isContinuousScroll: false,
-};
 
 export default function FileExplorerScreen() {
   const router = useRouter();

@@ -4,13 +4,20 @@ import { Book, Bookmark, Collection, ReadingSettings } from '../types/book';
 const DB_NAME = 'ereader_library.db';
 
 export const DEFAULT_SETTINGS: ReadingSettings = {
+  themeMode: 'sepia',
+
+  // EPUB / TXT Defaults
   fontSize: 18,
   fontFamily: 'Serif',
   lineHeight: 1.6,
   marginSize: 20,
-  themeMode: 'sepia',
   textAlignment: 'left',
   isContinuousScroll: false,
+
+  // PDF Specific Defaults
+  pdfPageFit: 'fitPage',
+  pdfContrast: 'normal',
+  pdfInvertColors: false,
 };
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;

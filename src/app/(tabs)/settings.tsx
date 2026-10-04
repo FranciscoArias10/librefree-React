@@ -18,9 +18,9 @@ import { Feather, FontAwesome } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { useTheme } from '../../context/ThemeContext';
 import { Toast } from '../../components/Toast';
-import { getReadingSettings, saveReadingSettings } from '../../services/database';
+import { getReadingSettings, saveReadingSettings, DEFAULT_SETTINGS } from '../../services/database';
 import { fetchDeviceVoices, setTTSVoice, testVoiceSample, stopTTS } from '../../services/ttsService';
-import { ReadingSettings } from '../../types/book';
+import { ReadingSettings, PdfPageFit, PdfContrastMode, TextAlignmentMode } from '../../types/book';
 
 function getLanguageFlag(lang: string): string {
   if (!lang) return '🌐';
@@ -75,15 +75,7 @@ export default function SettingsScreen() {
   const [cloudSyncEnabled, setCloudSyncEnabled] = useState(true);
 
   // Settings & Voices State
-  const [settings, setSettings] = useState<ReadingSettings>({
-    fontSize: 18,
-    fontFamily: 'Serif',
-    lineHeight: 1.6,
-    marginSize: 20,
-    themeMode: 'sepia',
-    textAlignment: 'left',
-    isContinuousScroll: false,
-  });
+  const [settings, setSettings] = useState<ReadingSettings>(DEFAULT_SETTINGS);
 
   const [availableVoices, setAvailableVoices] = useState<Speech.Voice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<Speech.Voice | null>(null);
@@ -156,6 +148,17 @@ export default function SettingsScreen() {
       'Hola, esta es una prueba de la voz seleccionada para la lectura en voz alta en LibreFree.',
       () => setTestingVoiceId(null)
     );
+  };
+
+  const handleUpdateFormatSettings = async (newSettings: Partial<ReadingSettings>) => {
+    try {
+      const updated = { ...settings, ...newSettings };
+      setSettings(updated);
+      await saveReadingSettings(updated);
+      setToast({ visible: true, message: '✓ Ajustes de lectura guardados', type: 'success' });
+    } catch (err) {
+      setToast({ visible: true, message: 'Error al guardar ajustes', type: 'error' });
+    }
   };
 
   const filteredVoices = useMemo(() => {
@@ -240,6 +243,73 @@ export default function SettingsScreen() {
                 </View>
               )}
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── Lectura por Formato (EPUB vs PDF) ───────────────── */}
+        <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Predeterminados por Formato</Text>
+        
+        {/* EPUB & Texto Card */}
+        <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border, marginBottom: 12 }]}>
+          <View style={styles.formatCardHeader}>
+            <View style={[styles.formatBadge, { backgroundColor: '#3B82F618' }]}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#3B82F6' }}>EPUB / TXT</Text>
+            </View>
+            <Text style={[styles.settingTitle, { color: theme.textCard, flex: 1 }]}>Texto Adaptable</Text>
+          </View>
+          <Text style={[styles.settingDesc, { color: theme.textSecondary, marginBottom: 10 }]}>
+            Tipografía: {settings.fontFamily} • Tamaños: {settings.fontSize}px • Interlineado: {settings.lineHeight.toFixed(1)}x • Márgenes: {settings.marginSize || 20}px
+          </Text>
+          
+          <View style={styles.formatChipRow}>
+            {['Serif', 'Sans-Serif', 'Monospace', 'Georgia'].map((f) => (
+              <TouchableOpacity
+                key={f}
+                style={[
+                  styles.miniChip,
+                  { backgroundColor: settings.fontFamily === f ? theme.accent : theme.bgChip },
+                ]}
+                onPress={() => handleUpdateFormatSettings({ fontFamily: f })}
+              >
+                <Text style={[styles.miniChipText, { color: settings.fontFamily === f ? theme.accentText : theme.textChip }]}>
+                  {f}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* PDF Card */}
+        <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+          <View style={styles.formatCardHeader}>
+            <View style={[styles.formatBadge, { backgroundColor: '#EF444418' }]}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444' }}>PDF</Text>
+            </View>
+            <Text style={[styles.settingTitle, { color: theme.textCard, flex: 1 }]}>Documento Fijo</Text>
+          </View>
+          <Text style={[styles.settingDesc, { color: theme.textSecondary, marginBottom: 10 }]}>
+            Ajuste de Vista: {(settings.pdfPageFit || 'fitPage') === 'fitWidth' ? 'Ajustar al Ancho' : (settings.pdfPageFit === 'fitHeight' ? 'Ajustar a Altura' : 'Página Completa')} • Contraste: {(settings.pdfContrast || 'normal') === 'high' ? 'Alto' : ((settings.pdfContrast || 'normal') === 'soft' ? 'Suave' : 'Estándar')}
+          </Text>
+
+          <View style={styles.formatChipRow}>
+            {[
+              { id: 'fitPage', label: 'Página Completa' },
+              { id: 'fitWidth', label: 'Ajustar al Ancho' },
+              { id: 'fitHeight', label: 'Ajustar a Altura' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.miniChip,
+                  { backgroundColor: (settings.pdfPageFit || 'fitPage') === item.id ? theme.accent : theme.bgChip },
+                ]}
+                onPress={() => handleUpdateFormatSettings({ pdfPageFit: item.id as PdfPageFit })}
+              >
+                <Text style={[styles.miniChipText, { color: (settings.pdfPageFit || 'fitPage') === item.id ? theme.accentText : theme.textChip }]}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
@@ -797,5 +867,31 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  formatCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 8,
+  },
+  formatBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  formatChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  miniChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  miniChipText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

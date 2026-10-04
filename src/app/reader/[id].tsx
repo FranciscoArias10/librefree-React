@@ -17,7 +17,7 @@ import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark, getBookmarks, updateBookFilePath } from '../../services/database';
+import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark, getBookmarks, updateBookFilePath, DEFAULT_SETTINGS } from '../../services/database';
 import { readBookContent, ensureBooksDirectoryExists, copyFileToPermanentStorage, extractTextFromBook } from '../../services/fileScanner';
 import { getEpubReaderHTML } from '../../reader/EpubReaderHTML';
 import { getTxtReaderHTML } from '../../reader/TxtReaderHTML';
@@ -213,15 +213,7 @@ export default function ReaderScreen() {
   const [book, setBook] = useState<Book | null>(null);
   const [bookData, setBookData] = useState<{ content: string; isBase64: boolean }>({ content: '', isBase64: false });
   const [bookBookmarks, setBookBookmarks] = useState<Bookmark[]>([]);
-  const [settings, setSettings] = useState<ReadingSettings>({
-    fontSize: 18,
-    fontFamily: 'Serif',
-    lineHeight: 1.6,
-    marginSize: 20,
-    themeMode: 'sepia',
-    textAlignment: 'left',
-    isContinuousScroll: false,
-  });
+  const [settings, setSettings] = useState<ReadingSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<number>(0);
   const [currentCfi, setCurrentCfi] = useState<string>('');

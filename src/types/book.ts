@@ -1,16 +1,27 @@
 export type BookFormat = 'EPUB' | 'PDF' | 'TXT' | 'AUDIOBOOK' | 'MOBI' | 'FB2';
 
 export type ReadingThemeMode = 'light' | 'sepia' | 'dark' | 'oled';
+export type PdfPageFit = 'fitPage' | 'fitWidth' | 'fitHeight';
+export type PdfContrastMode = 'normal' | 'high' | 'soft';
+export type TextAlignmentMode = 'left' | 'justify' | 'center';
 
 export interface ReadingSettings {
-  fontSize: number; // e.g. 16
-  fontFamily: string; // e.g. 'Inter', 'Serif', 'Sans-Serif', 'Georgia', 'Merriweather'
-  lineHeight: number; // e.g. 1.5
-  marginSize: number; // e.g. 16
+  // Shared
   themeMode: ReadingThemeMode; // light, sepia, dark, oled
-  textAlignment: 'left' | 'justify' | 'center';
-  isContinuousScroll: boolean;
   selectedVoiceIdentifier?: string;
+
+  // EPUB / TXT Settings (Reflowable Text)
+  fontSize: number; // e.g. 16
+  fontFamily: string; // e.g. 'Serif', 'Sans-Serif', 'Monospace', 'Georgia', 'Merriweather'
+  lineHeight: number; // e.g. 1.6
+  marginSize: number; // e.g. 20 (px)
+  textAlignment: TextAlignmentMode; // 'left' | 'justify' | 'center'
+  isContinuousScroll: boolean;
+
+  // PDF Specific Settings (Fixed Layout)
+  pdfPageFit: PdfPageFit; // 'fitPage' | 'fitWidth' | 'fitHeight'
+  pdfContrast: PdfContrastMode; // 'normal' | 'high' | 'soft'
+  pdfInvertColors?: boolean;
 }
 
 export interface Bookmark {

@@ -26,13 +26,24 @@ export function getPdfReaderHTML(
       );
 
   const getCanvasFilter = () => {
-    if (settings.themeMode === 'dark' || settings.themeMode === 'oled') {
-      return 'invert(0.92) hue-rotate(180deg) contrast(1.2) brightness(0.95)';
+    let contrastMultiplier = 1.05;
+    let brightnessMultiplier = 0.98;
+
+    if (settings.pdfContrast === 'high') {
+      contrastMultiplier = 1.35;
+      brightnessMultiplier = 0.92;
+    } else if (settings.pdfContrast === 'soft') {
+      contrastMultiplier = 0.95;
+      brightnessMultiplier = 1.02;
+    }
+
+    if (settings.pdfInvertColors || settings.themeMode === 'dark' || settings.themeMode === 'oled') {
+      return `invert(0.92) hue-rotate(180deg) contrast(${(contrastMultiplier * 1.15).toFixed(2)}) brightness(${(brightnessMultiplier * 0.95).toFixed(2)})`;
     }
     if (settings.themeMode === 'sepia') {
-      return 'sepia(0.35) contrast(1.08) brightness(0.96)';
+      return `sepia(0.35) contrast(${contrastMultiplier.toFixed(2)}) brightness(${brightnessMultiplier.toFixed(2)})`;
     }
-    return 'contrast(1.05) brightness(0.98)';
+    return `contrast(${contrastMultiplier.toFixed(2)}) brightness(${brightnessMultiplier.toFixed(2)})`;
   };
 
   return `
@@ -271,6 +282,11 @@ export function getPdfReaderHTML(
       var onlyFirstPage = ${onlyFirstPageMode ? 'true' : 'false'};
       var isRendering = false;
 
+      var pdfPageFit = ${JSON.stringify(settings.pdfPageFit || 'fitPage')};
+      var pdfContrast = ${JSON.stringify(settings.pdfContrast || 'normal')};
+      var pdfInvertColors = ${settings.pdfInvertColors ? 'true' : 'false'};
+      var currentThemeMode = ${JSON.stringify(settings.themeMode || 'sepia')};
+
       var pageCanvasCache = {};
       var pageHighlightsCache = {};
 
@@ -393,7 +409,13 @@ export function getPdfReaderHTML(
         var unscaledViewport = page.getViewport({ scale: 1.0 });
         var scaleX = containerWidth / unscaledViewport.width;
         var scaleY = containerHeight / unscaledViewport.height;
+
         var baseScale = Math.min(scaleX, scaleY);
+        if (pdfPageFit === 'fitWidth') {
+          baseScale = scaleX;
+        } else if (pdfPageFit === 'fitHeight') {
+          baseScale = scaleY;
+        }
 
         var viewport = page.getViewport({ scale: baseScale * dpr });
 
@@ -1057,13 +1079,48 @@ export function getPdfReaderHTML(
             }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;
+            var reRenderNeeded = false;
+
+            if (s.pdfPageFit && s.pdfPageFit !== pdfPageFit) {
+              pdfPageFit = s.pdfPageFit;
+              pageCanvasCache = {};
+              reRenderNeeded = true;
+            }
+            if (s.pdfContrast && s.pdfContrast !== pdfContrast) {
+              pdfContrast = s.pdfContrast;
+              reRenderNeeded = true;
+            }
+            if (s.pdfInvertColors !== undefined && s.pdfInvertColors !== pdfInvertColors) {
+              pdfInvertColors = s.pdfInvertColors;
+              reRenderNeeded = true;
+            }
             if (s.themeMode) {
+              currentThemeMode = s.themeMode;
               var bg = '#FFFFFF', txt = '#111111';
               if (s.themeMode === 'sepia') { bg = '#F8F1E3'; txt = '#433422'; }
               else if (s.themeMode === 'dark') { bg = '#1E1E2E'; txt = '#CDD6F4'; }
               else if (s.themeMode === 'oled') { bg = '#000000'; txt = '#E0E0E0'; }
               document.body.style.backgroundColor = bg;
               document.body.style.color = txt;
+              reRenderNeeded = true;
+            }
+
+            var canvasEl = document.getElementById('pdf-canvas');
+            if (canvasEl) {
+              var cMult = (pdfContrast === 'high' ? 1.35 : (pdfContrast === 'soft' ? 0.95 : 1.05));
+              var bMult = (pdfContrast === 'high' ? 0.92 : (pdfContrast === 'soft' ? 1.02 : 0.98));
+              var filterStr = 'contrast(' + cMult + ') brightness(' + bMult + ')';
+              if (pdfInvertColors || currentThemeMode === 'dark' || currentThemeMode === 'oled') {
+                filterStr = 'invert(0.92) hue-rotate(180deg) contrast(' + (cMult * 1.15).toFixed(2) + ') brightness(' + (bMult * 0.95).toFixed(2) + ')';
+              } else if (currentThemeMode === 'sepia') {
+                filterStr = 'sepia(0.35) contrast(' + cMult.toFixed(2) + ') brightness(' + bMult.toFixed(2) + ')';
+              }
+              canvasEl.style.filter = filterStr;
+              canvasEl.style.webkitFilter = filterStr;
+            }
+
+            if (reRenderNeeded && currentPage) {
+              renderPage(currentPage);
             }
           }
         } catch(e) {}

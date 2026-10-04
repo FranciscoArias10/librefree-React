@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getDB, saveBookCover, saveExtractedBookText } from '../services/database';
+import { getDB, saveBookCover, saveExtractedBookText, DEFAULT_SETTINGS } from '../services/database';
 import { readBookContent } from '../services/fileScanner';
 import { getPdfReaderHTML } from '../reader/PdfReaderHTML';
 import { getEpubReaderHTML } from '../reader/EpubReaderHTML';
@@ -13,16 +13,6 @@ interface ProcessingBook {
   filePath: string;
   format: 'EPUB' | 'PDF' | 'TXT';
 }
-
-const DEFAULT_SETTINGS: ReadingSettings = {
-  fontSize: 18,
-  fontFamily: 'Serif',
-  lineHeight: 1.6,
-  marginSize: 20,
-  themeMode: 'light',
-  textAlignment: 'left',
-  isContinuousScroll: false,
-};
 
 export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void; triggerKey?: number }> = ({ onCoverGenerated, triggerKey }) => {
   const [currentBook, setCurrentBook] = useState<ProcessingBook | null>(null);
