@@ -567,7 +567,7 @@ export function getPdfReaderHTML(
         if (!pdfDoc) return;
         try {
           var fullText = "";
-          var maxP = Math.min(totalPages, 40);
+          var maxP = Math.min(totalPages, 300);
           for (var i = 1; i <= maxP; i++) {
             var pObj = await pdfDoc.getPage(i);
             var tObj = await pObj.getTextContent();

@@ -24,6 +24,8 @@ import {
   stopTTS,
   setTTSSpeed,
   jumpToTTSChunk,
+  splitTextIntoChunks,
+  findMatchingChunkIndex,
 } from '../../services/ttsService';
 import {
   loadAudiobookTrack,
@@ -149,12 +151,20 @@ export default function AudiobooksScreen() {
         savedPos
       );
     } else {
-      // PDF, EPUB, TXT -> Full TTS Generation
+      // PDF, EPUB, TXT -> Full TTS Generation starting at saved book progress
       try {
         setIsGenerating(true);
         const textToRead = await extractTextFromBook(freshBook);
+        const tempChunks = splitTextIntoChunks(textToRead);
 
-        setCurrentChunkIndex(savedPos);
+        let startChunk = 0;
+        if (freshBook.currentLocation && !isNaN(parseInt(freshBook.currentLocation, 10)) && parseInt(freshBook.currentLocation, 10) < tempChunks.length) {
+          startChunk = parseInt(freshBook.currentLocation, 10);
+        } else {
+          startChunk = findMatchingChunkIndex(tempChunks, freshBook.progressPercentage || 0);
+        }
+
+        setCurrentChunkIndex(startChunk);
 
         startTTSBook(
           textToRead,
@@ -176,7 +186,8 @@ export default function AudiobooksScreen() {
             setIsPlaying(false);
             setCurrentTextSnippet('Lectura finalizada.');
           },
-          savedPos
+          startChunk,
+          freshBook.id
         );
       } catch (err) {
         console.error('Error generando audiolibro:', err);

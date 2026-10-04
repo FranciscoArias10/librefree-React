@@ -1,6 +1,7 @@
 import { getPdfReaderHTML } from '../reader/PdfReaderHTML';
 import { getEpubReaderHTML } from '../reader/EpubReaderHTML';
 import { getTxtReaderHTML } from '../reader/TxtReaderHTML';
+import { findMatchingChunkIndex, splitTextIntoChunks } from '../services/ttsService';
 import { runBookFilesTests } from './test-book-files';
 
 export function testableNormalizePath(path: string): string {
@@ -241,6 +242,26 @@ async function runTestSuite() {
     epubSample.includes('html2canvas'),
     'EpubReaderHTML embeds html2canvas library for high-definition page snapshot'
   );
+
+  console.log('\n🗣️ [SUITE 10] TTS Starting Chunk Position & Snippet Matching Verification');
+  const sampleFullText = "Capítulo 1. En un lugar de la Mancha de cuyo nombre no quiero acordarme. Capítulo 2. El ingenioso hidalgo Don Quijote. Capítulo 3. La venta del ventero.";
+  const sampleChunks = splitTextIntoChunks(sampleFullText, 50);
+  
+  assert(sampleChunks.length > 1, 'splitTextIntoChunks splits sample text into multiple chunks');
+
+  // Test 1: Page 30 snippet match
+  const matchIdx = findMatchingChunkIndex(sampleChunks, 0, "El ingenioso hidalgo Don Quijote");
+  assert(matchIdx > 0, `findMatchingChunkIndex correctly matches current page snippet (found chunk ${matchIdx})`);
+
+  // Test 2: Percentage fallback (e.g. 30%)
+  const pctIdx = findMatchingChunkIndex(sampleChunks, 30, "");
+  assert(pctIdx >= 0 && pctIdx < sampleChunks.length, `findMatchingChunkIndex calculates valid chunk index for 30% progress (chunk ${pctIdx} of ${sampleChunks.length})`);
+
+  // Test 3: 0% progress starts at chunk 0
+  assert(findMatchingChunkIndex(sampleChunks, 0, "") === 0, 'findMatchingChunkIndex at 0% progress returns chunk 0');
+
+  // Test 4: 100% progress maps to last chunk
+  assert(findMatchingChunkIndex(sampleChunks, 100, "") === sampleChunks.length - 1, 'findMatchingChunkIndex at 100% progress returns last chunk');
 
   console.log('\n====================================================');
   console.log(`📊 TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);

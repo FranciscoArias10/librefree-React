@@ -24,6 +24,7 @@ import {
   setTTSSpeed,
   jumpToTTSChunk,
   splitTextIntoChunks,
+  findMatchingChunkIndex,
   isTTSSpeakingForBook,
 } from '../services/ttsService';
 import {
@@ -139,11 +140,10 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
           }
 
           let startChunk = 0;
-          if (pctToUse > 0 && textToRead) {
+          if (textToRead) {
             const tempChunks = splitTextIntoChunks(textToRead);
             if (tempChunks.length > 0) {
-              const rawIndex = Math.floor((pctToUse / 100) * tempChunks.length);
-              startChunk = Math.min(tempChunks.length - 1, Math.max(0, rawIndex));
+              startChunk = findMatchingChunkIndex(tempChunks, pctToUse);
             }
           }
 

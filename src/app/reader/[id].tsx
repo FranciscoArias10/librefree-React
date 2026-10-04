@@ -18,13 +18,13 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark, getBookmarks, updateBookFilePath } from '../../services/database';
-import { readBookContent, ensureBooksDirectoryExists, copyFileToPermanentStorage } from '../../services/fileScanner';
+import { readBookContent, ensureBooksDirectoryExists, copyFileToPermanentStorage, extractTextFromBook } from '../../services/fileScanner';
 import { getEpubReaderHTML } from '../../reader/EpubReaderHTML';
 import { getTxtReaderHTML } from '../../reader/TxtReaderHTML';
 import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
 import { ReaderControlsModal } from '../../components/ReaderControlsModal';
 import { AudioPlayerModal } from '../../components/AudioPlayerModal';
-import { speakText, stopSpeech } from '../../services/ttsService';
+import { speakText, stopSpeech, startTTSBook, stopTTS, splitTextIntoChunks, findMatchingChunkIndex } from '../../services/ttsService';
 import { Book, Bookmark, ReadingSettings } from '../../types/book';
 import { Toast } from '../../components/Toast';
 import { Feather, FontAwesome } from '@expo/vector-icons';
@@ -600,6 +600,45 @@ export default function ReaderScreen() {
   const androidStatusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0;
   const baseUrl = FileSystem.documentDirectory || 'file:///';
 
+  const handleToggleReaderTTS = async () => {
+    if (ttsActive && ttsIsPlaying) {
+      setTtsActive(false);
+      setTtsIsPlaying(false);
+      stopSpeech();
+      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
+    } else {
+      if (!book) return;
+      setTtsActive(true);
+      setTtsIsPlaying(true);
+
+      const textToRead = await extractTextFromBook(book);
+      const bookChunks = splitTextIntoChunks(textToRead);
+      const startChunk = findMatchingChunkIndex(bookChunks, progress, currentPageText);
+
+      startTTSBook(
+        textToRead,
+        1.0,
+        (index, total, snippet) => {
+          setTtsIsPlaying(true);
+          setCurrentPageText(snippet);
+          webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet }));
+
+          const progressPct = Math.min(100, Math.round(((index + 1) / total) * 100));
+          const locToSave = (book.format === 'EPUB' && book.currentLocation?.includes('epubcfi'))
+            ? book.currentLocation
+            : String(index);
+          updateBookProgress(book.id, progressPct, locToSave, `Fragmento ${index + 1} de ${total}`);
+        },
+        () => {
+          setTtsIsPlaying(false);
+          webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
+        },
+        startChunk,
+        book.id
+      );
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: getBackgroundColor() }]}>
       <Toast
@@ -657,31 +696,7 @@ export default function ReaderScreen() {
               {/* TTS / Audio Button */}
               <TouchableOpacity
                 style={styles.iconBtn}
-                onPress={() => {
-                  if (ttsActive) {
-                    setTtsActive(false);
-                    setTtsIsPlaying(false);
-                    stopSpeech();
-                    webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
-                  } else {
-                    setTtsActive(true);
-                    setTtsIsPlaying(true);
-                    const textToRead = currentPageText || `Comenzando lectura de ${pageLabel}`;
-                    speakText(textToRead, {
-                      onProgress: (idx, tot, snippet) => {
-                        webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet }));
-                      },
-                      onDone: () => {
-                        setTtsIsPlaying(false);
-                        webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
-                      },
-                      onError: () => {
-                        setTtsIsPlaying(false);
-                        webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
-                      },
-                    });
-                  }
-                }}
+                onPress={handleToggleReaderTTS}
               >
                 <Feather name="volume-2" size={20} color={ttsActive ? '#3182CE' : getTextColor()} />
               </TouchableOpacity>
@@ -733,28 +748,7 @@ export default function ReaderScreen() {
           >
             <TouchableOpacity
               style={[styles.miniPlayBtnCircle, { backgroundColor: '#8E44AD' }]}
-              onPress={() => {
-                if (ttsIsPlaying) {
-                  stopSpeech();
-                  setTtsIsPlaying(false);
-                } else {
-                  setTtsIsPlaying(true);
-                  const textToRead = currentPageText || `Leyendo ${pageLabel}`;
-                  speakText(textToRead, {
-                    onProgress: (idx, tot, snippet) => {
-                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet }));
-                    },
-                    onDone: () => {
-                      setTtsIsPlaying(false);
-                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
-                    },
-                    onError: () => {
-                      setTtsIsPlaying(false);
-                      webViewRef.current?.postMessage(JSON.stringify({ type: 'HIGHLIGHT_SPEECH_TEXT', snippet: '' }));
-                    },
-                  });
-                }
-              }}
+              onPress={handleToggleReaderTTS}
             >
               <FontAwesome name={ttsIsPlaying ? 'pause' : 'play'} size={14} color="#FFFFFF" style={{ marginLeft: ttsIsPlaying ? 0 : 2 }} />
             </TouchableOpacity>

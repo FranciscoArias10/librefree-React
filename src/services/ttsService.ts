@@ -54,6 +54,34 @@ export function splitTextIntoChunks(text: string, chunkSize: number = 250): stri
   return result;
 }
 
+export function findMatchingChunkIndex(
+  chunksList: string[],
+  progressPercentage: number,
+  currentSnippet?: string
+): number {
+  if (!chunksList || chunksList.length === 0) return 0;
+
+  // 1. Intentar coincidencia con fragmento de la página actual
+  if (currentSnippet && currentSnippet.trim().length > 10) {
+    const cleanSnippet = currentSnippet.trim().substring(0, 35).toLowerCase();
+    const foundIndex = chunksList.findIndex((c) => {
+      const lowerC = c.toLowerCase();
+      return lowerC.includes(cleanSnippet) || cleanSnippet.includes(lowerC.substring(0, 20));
+    });
+    if (foundIndex !== -1) {
+      return foundIndex;
+    }
+  }
+
+  // 2. Fallback por porcentaje de progreso
+  let pct = progressPercentage || 0;
+  if (pct > 0 && pct <= 1.0) pct = pct * 100;
+  if (pct <= 0) return 0;
+
+  const rawIndex = Math.floor((pct / 100) * chunksList.length);
+  return Math.min(chunksList.length - 1, Math.max(0, rawIndex));
+}
+
 export function isTTSSpeakingForBook(bookId: string): boolean {
   return isSpeakingActive && activeBookId === bookId;
 }
