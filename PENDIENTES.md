@@ -6,6 +6,7 @@
 ---
 
 ### ✅ Tareas Completadas Recientemente
+- [x] **Generación Automática de Portadas al Importar (EPUB/PDF)**: Solucionada la extracción nativa de portadas EPUB inspeccionando manifiesto OPF en tiempo de importación (<50ms) y la generación en segundo plano para PDF mediante WebView renderizado off-screen sin suspensión de lienzo en Android.
 - [x] **Configuraciones Específicas por Formato (PDF vs EPUB)**: Opciones de lectura 100% independientes en `ReaderControlsModal` y Ajustes: Ajuste de vista (`pdfPageFit`: *Página Completa*, *Ajustar al Ancho*, *Ajustar a Altura*), contraste (*Alto Contraste*, *Suave*) e inversión nocturna para PDF; y tipografía, tamaño de letra, interlineado, márgenes y alineación para EPUB/TXT.
 - [x] **Catálogo y Selección de Voces (TTS)**: Permite listar, filtrar (español / todos los idiomas), probar muestra en vivo ("Probar Voz") y seleccionar voces específicas instaladas en el dispositivo (masculinas, femeninas, acentos regionalizados) desde Ajustes y guardarlas persistentemente.
 - [x] **Lectura por Voz desde la página actual (TTS)**: Arreglado el inicio de la síntesis de voz (`startTTSBook`) usando coincidencia de fragmento de texto (`findMatchingChunkIndex`) para que la lectura empiece en la página que estás leyendo (ej. Página 30) y continúe leyendo en voz alta las siguientes páginas sin devolverse a la primera página.

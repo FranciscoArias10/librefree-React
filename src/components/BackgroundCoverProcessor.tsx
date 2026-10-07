@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getDB, saveBookCover, saveExtractedBookText, DEFAULT_SETTINGS } from '../services/database';
@@ -44,7 +44,7 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void;
          FROM books b 
          WHERE (b.coverPath IS NULL OR b.coverPath = '' OR length(b.coverPath) < 50) 
          AND (b.format = 'PDF' OR b.format = 'EPUB') 
-         ORDER BY b.id DESC 
+         ORDER BY b.addedAt DESC, b.id DESC 
          LIMIT 1;`
       );
 
@@ -55,12 +55,11 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void;
 
         isProcessingRef.current = true;
 
-        // Set timeout to prevent getting stuck indefinitely on a problematic book
+        // Timeout preventivo de 10 segundos por libro
         timeoutRef.current = setTimeout(() => {
-          console.log(`[BackgroundCoverProcessor] Timeout procesando portada para libro ${row.id}`);
           failedBookIdsRef.current.add(row.id);
           clearCurrentJob();
-        }, 12000);
+        }, 10000);
 
         const data = await readBookContent(row.filePath, row.format, row.id);
 
@@ -79,7 +78,6 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void;
         clearCurrentJob();
       }
     } catch (err) {
-      console.error('Error en procesador de portadas en segundo plano:', err);
       clearCurrentJob();
     }
   };
@@ -90,7 +88,7 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void;
 
   useEffect(() => {
     checkPendingBooks();
-    const interval = setInterval(checkPendingBooks, 2000);
+    const interval = setInterval(checkPendingBooks, 1500);
     return () => {
       clearInterval(interval);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -104,14 +102,15 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void;
         const coverPath = data.payload.coverPath;
         if (coverPath.length > 50) {
           await saveBookCover(currentBook.id, coverPath);
+          DeviceEventEmitter.emit('BOOK_COVER_UPDATED', { bookId: currentBook.id, coverPath });
           if (onCoverGenerated) onCoverGenerated();
           clearCurrentJob();
-          setTimeout(checkPendingBooks, 100);
+          setTimeout(checkPendingBooks, 50);
         }
       } else if (data.type === 'NO_COVER_AVAILABLE' && currentBook) {
         failedBookIdsRef.current.add(currentBook.id);
         clearCurrentJob();
-        setTimeout(checkPendingBooks, 100);
+        setTimeout(checkPendingBooks, 50);
       } else if ((data.type === 'FULL_PDF_TEXT' || data.type === 'FULL_EPUB_TEXT') && currentBook && data.payload?.text) {
         const text = data.payload.text;
         if (text.length > 20) {
@@ -128,13 +127,13 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void;
   const baseUrl = FileSystem.documentDirectory || 'file:///';
 
   return (
-    <View style={styles.hiddenContainer} pointerEvents="none">
+    <View style={styles.offscreenContainer} pointerEvents="none">
       <WebView
         ref={webViewRef}
         originWhitelist={['*']}
         source={{ html: htmlSource, baseUrl: baseUrl }}
         onMessage={handleMessage}
-        style={{ width: 300, height: 400, opacity: 0 }}
+        style={{ width: 360, height: 520, opacity: 1 }}
         javaScriptEnabled
         domStorageEnabled
         allowFileAccess={true}
@@ -146,11 +145,14 @@ export const BackgroundCoverProcessor: React.FC<{ onCoverGenerated?: () => void;
 };
 
 const styles = StyleSheet.create({
-  hiddenContainer: {
+  offscreenContainer: {
     position: 'absolute',
-    width: 1,
-    height: 1,
-    opacity: 0,
+    top: -9999,
+    left: -9999,
+    width: 360,
+    height: 520,
+    opacity: 1,
     overflow: 'hidden',
+    zIndex: -9999,
   },
 });

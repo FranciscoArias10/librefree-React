@@ -31,11 +31,14 @@ console.error = (...args: any[]) => {
   origConsoleError(...args);
 };
 
+import { BackgroundCoverProcessor } from '../components/BackgroundCoverProcessor';
+
 function RootLayoutInner() {
   const { theme } = useTheme();
   return (
     <>
       <StatusBar style={theme.statusBar} />
+      <BackgroundCoverProcessor />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen

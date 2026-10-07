@@ -403,15 +403,76 @@ export async function extractEpubCoverNative(base64Data: string): Promise<string
     const cleanB64 = base64Data.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
     const zip = await JSZip.loadAsync(cleanB64, { base64: true });
     const imageFiles = Object.keys(zip.files).filter((name) =>
-      /\.(jpe?g|png|webp)$/i.test(name) && !name.includes('MACOSX')
+      /\.(jpe?g|png|webp|gif)$/i.test(name) && !name.includes('MACOSX')
     );
 
     if (imageFiles.length === 0) return null;
 
-    // Prioritize files named cover or portada
+    let targetPath: string | null = null;
+
+    // 1. Intentar encontrar META-INF/container.xml -> content.opf para obtener la portada exacta declarada en el libro
+    try {
+      const containerFile = zip.files['META-INF/container.xml'] || zip.files['meta-inf/container.xml'];
+      if (containerFile) {
+        const containerXml = await containerFile.async('string');
+        const opfMatch = containerXml.match(/full-path=["']([^"']+)["']/i);
+        if (opfMatch && opfMatch[1]) {
+          const opfPath = opfMatch[1];
+          const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+          const opfFile = zip.files[opfPath];
+          if (opfFile) {
+            const opfText = await opfFile.async('string');
+
+            // a) Buscar <meta name="cover" content="cover-id"/>
+            const coverMetaMatch = opfText.match(/<meta[^>]*name=["']cover["'][^>]*content=["']([^"']+)["']/i) ||
+                                  opfText.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']cover["']/i);
+            let coverId = coverMetaMatch ? coverMetaMatch[1] : null;
+
+            // b) Si no hay meta name="cover", buscar <item properties="cover-image" href="...">
+            if (!coverId) {
+              const coverPropMatch = opfText.match(/<item[^>]*properties=["'][^"']*cover-image[^"']*["'][^>]*href=["']([^"']+)["']/i) ||
+                                     opfText.match(/<item[^>]*href=["']([^"']+)["'][^>]*properties=["'][^"']*cover-image[^"']*["']/i);
+              if (coverPropMatch && coverPropMatch[1]) {
+                targetPath = opfDir + coverPropMatch[1];
+              }
+            }
+
+            // c) Si tenemos coverId, buscar <item id="coverId" href="...">
+            if (coverId && !targetPath) {
+              const itemMatch = opfText.match(new RegExp(`<item[^>]*id=["']${coverId}["'][^>]*href=["']([^"']+)["']`, 'i')) ||
+                                opfText.match(new RegExp(`<item[^>]*href=["']([^"']+)["'][^>]*id=["']${coverId}["']`, 'i'));
+              if (itemMatch && itemMatch[1]) {
+                targetPath = opfDir + itemMatch[1];
+              }
+            }
+          }
+        }
+      }
+    } catch (eOpf) {}
+
+    // Intentar extraer la imagen del targetPath si se encontró en OPF
+    if (targetPath) {
+      if (targetPath.startsWith('/')) targetPath = targetPath.substring(1);
+      const exactMatch = Object.keys(zip.files).find((name) =>
+        name.toLowerCase() === targetPath!.toLowerCase() ||
+        name.toLowerCase().endsWith(targetPath!.toLowerCase())
+      );
+      if (exactMatch) {
+        const ext = exactMatch.split('.').pop()?.toLowerCase() || 'jpeg';
+        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const imgBase64 = await zip.files[exactMatch].async('base64');
+        if (imgBase64 && imgBase64.length > 50) {
+          return `data:${mime};base64,${imgBase64}`;
+        }
+      }
+    }
+
+    // 2. Si no se encontró por OPF, buscar por patrones comunes en nombres de archivo
     const coverFile =
       imageFiles.find((name) => /cover/i.test(name)) ||
       imageFiles.find((name) => /portada/i.test(name)) ||
+      imageFiles.find((name) => /front/i.test(name)) ||
+      imageFiles.find((name) => /title/i.test(name)) ||
       imageFiles[0];
 
     if (coverFile) {

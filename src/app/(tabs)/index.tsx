@@ -12,6 +12,7 @@ import {
   StatusBar,
   Platform,
   RefreshControl,
+  DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -57,6 +58,11 @@ export default function BookshelfScreen() {
       } catch (e) {}
     }
     loadLayout();
+
+    const coverSub = DeviceEventEmitter.addListener('BOOK_COVER_UPDATED', () => {
+      fetchBooks();
+    });
+    return () => coverSub.remove();
   }, []);
 
   const handleToggleLayoutMode = async () => {
