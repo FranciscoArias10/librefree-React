@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import JSZip from 'jszip';
@@ -15,28 +17,256 @@ export interface ScannedFile {
   coverPath?: string;
 }
 
-export async function autoScanDeviceDirectories(
-  onProgress?: (folder: string) => void
-): Promise<ScannedFile[]> {
-  const foundFiles: ScannedFile[] = [];
-  const scannedPathsSet = new Set<string>();
+export const SCAN_FOLDER_URI_KEY = '@librefree_scan_folder_uri';
+export const SCAN_FOLDER_NAME_KEY = '@librefree_scan_folder_name';
 
-  const baseDirectories: string[] = [
+export async function getSavedScanDirectoryUri(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(SCAN_FOLDER_URI_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function getSavedScanDirectoryName(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(SCAN_FOLDER_NAME_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function saveScanDirectoryUri(uri: string, name?: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(SCAN_FOLDER_URI_KEY, uri);
+    if (name) {
+      await AsyncStorage.setItem(SCAN_FOLDER_NAME_KEY, name);
+    }
+  } catch (e) {
+    console.warn('Error guardando directorio de escaneo:', e);
+  }
+}
+
+export async function clearSavedScanDirectoryUri(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(SCAN_FOLDER_URI_KEY);
+    await AsyncStorage.removeItem(SCAN_FOLDER_NAME_KEY);
+  } catch (e) {
+    console.warn('Error limpiando directorio de escaneo:', e);
+  }
+}
+
+export function getDirectoryDisplayName(dirUri: string): string {
+  try {
+    const decoded = decodeURIComponent(dirUri);
+    const lastPart = decoded.split('/').pop() || '';
+    if (lastPart.includes(':')) {
+      const folder = lastPart.split(':').pop() || lastPart;
+      const lower = folder.toLowerCase();
+      if (lower === 'download' || lower === 'downloads') return 'Descargas';
+      if (lower === 'documents' || lower === 'documentos') return 'Documentos';
+      if (lower === 'books' || lower === 'libros') return 'Libros';
+      return folder;
+    }
+    const lower = lastPart.toLowerCase();
+    if (lower === 'download' || lower === 'downloads') return 'Descargas';
+    if (lower === 'documents' || lower === 'documentos') return 'Documentos';
+    if (lower === 'books' || lower === 'libros') return 'Libros';
+    return lastPart || 'Almacenamiento';
+  } catch {
+    return 'Almacenamiento';
+  }
+}
+
+export function getFileNameFromSAFUri(uri: string): string {
+  try {
+    const decoded = decodeURIComponent(uri);
+    const lastSlash = decoded.lastIndexOf('/');
+    let namePart = lastSlash !== -1 ? decoded.substring(lastSlash + 1) : decoded;
+    const lastColon = namePart.lastIndexOf(':');
+    if (lastColon !== -1 && lastColon < namePart.length - 1) {
+      namePart = namePart.substring(lastColon + 1);
+    }
+    return namePart || 'document';
+  } catch {
+    return uri.split('/').pop() || 'document';
+  }
+}
+
+export async function requestScanDirectoryPermissions(): Promise<{
+  granted: boolean;
+  directoryUri?: string;
+  name?: string;
+}> {
+  if (Platform.OS === 'android' && FileSystem.StorageAccessFramework) {
+    try {
+      let initialUri: string | null = null;
+      try {
+        initialUri = FileSystem.StorageAccessFramework.getUriForDirectoryInRoot('Download');
+      } catch (eInit) {}
+
+      const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync(initialUri);
+      if (permissions.granted && permissions.directoryUri) {
+        const name = getDirectoryDisplayName(permissions.directoryUri);
+        await saveScanDirectoryUri(permissions.directoryUri, name);
+        return { granted: true, directoryUri: permissions.directoryUri, name };
+      }
+    } catch (e) {
+      console.warn('Error solicitando permisos SAF:', e);
+    }
+  }
+  return { granted: false };
+}
+
+export async function scanSafDirectory(
+  dirUri: string,
+  onProgress?: (name: string) => void,
+  depth: number = 0,
+  visited: Set<string> = new Set<string>()
+): Promise<ScannedFile[]> {
+  if (depth > 4 || visited.has(dirUri)) return [];
+  visited.add(dirUri);
+
+  const found: ScannedFile[] = [];
+
+  try {
+    const children = await FileSystem.StorageAccessFramework.readDirectoryAsync(dirUri);
+    for (const childUri of children) {
+      if (visited.has(childUri)) continue;
+
+      const fileName = getFileNameFromSAFUri(childUri);
+      if (fileName.startsWith('.')) continue;
+
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      let format: BookFormat | null = null;
+      if (ext === 'epub') format = 'EPUB';
+      else if (ext === 'pdf') format = 'PDF';
+      else if (ext === 'txt') format = 'TXT';
+      else if (ext === 'mp3' || ext === 'm4b') format = 'AUDIOBOOK';
+      else if (ext === 'mobi') format = 'MOBI';
+      else if (ext === 'fb2') format = 'FB2';
+
+      if (format) {
+        visited.add(childUri);
+        if (onProgress) onProgress(fileName);
+
+        let size = 0;
+        try {
+          const info = await FileSystem.getInfoAsync(childUri);
+          if (info.exists && info.size) {
+            size = info.size;
+          }
+        } catch (eSize) {}
+
+        found.push({
+          id: `saf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          name: fileName,
+          uri: childUri,
+          size,
+          format,
+          selected: true,
+          path: childUri,
+        });
+      } else {
+        const isNonFolderFile = /\.(jpe?g|png|gif|webp|svg|mp4|mkv|avi|mov|zip|rar|7z|tar|gz|apk|exe|bin|iso|docx?|xlsx?|pptx?|log|json|xml|html?|css|js|ts)$/i.test(fileName);
+        if (!isNonFolderFile) {
+          try {
+            const subItems = await scanSafDirectory(childUri, onProgress, depth + 1, visited);
+            found.push(...subItems);
+          } catch (eSub) {
+            // No es un directorio o no se puede leer, continuar
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[scanSafDirectory] Error leyendo directorio:', dirUri, err);
+  }
+
+  return found;
+}
+
+export interface AutoScanOptions {
+  onProgress?: (status: string) => void;
+  targetFolderUri?: string;
+  forceRequestFolder?: boolean;
+}
+
+export interface AutoScanResponse {
+  files: ScannedFile[];
+  cancelled?: boolean;
+  folderName?: string;
+}
+
+export async function scanDeviceBooks(
+  options?: AutoScanOptions
+): Promise<AutoScanResponse> {
+  const onProgress = options?.onProgress;
+  const foundFiles: ScannedFile[] = [];
+  const visitedPaths = new Set<string>();
+
+  let folderUri = options?.targetFolderUri;
+  let folderName = '';
+
+  // 1. Android: Si no se pasó URI explícito, buscar el guardado o pedir permisos
+  if (Platform.OS === 'android') {
+    if (!folderUri && !options?.forceRequestFolder) {
+      folderUri = (await getSavedScanDirectoryUri()) || undefined;
+      folderName = (await getSavedScanDirectoryName()) || '';
+    }
+
+    if (!folderUri || options?.forceRequestFolder) {
+      if (onProgress) onProgress('Selecciona la carpeta a escanear...');
+      const permResult = await requestScanDirectoryPermissions();
+      if (!permResult.granted || !permResult.directoryUri) {
+        return { files: [], cancelled: true };
+      }
+      folderUri = permResult.directoryUri;
+      folderName = permResult.name || getDirectoryDisplayName(folderUri);
+    } else if (!folderName) {
+      folderName = getDirectoryDisplayName(folderUri);
+    }
+
+    // Escaneo mediante StorageAccessFramework
+    if (folderUri && FileSystem.StorageAccessFramework) {
+      if (onProgress) onProgress(`Escaneando ${folderName || 'dispositivo'}...`);
+      try {
+        const safFiles = await scanSafDirectory(folderUri, onProgress, 0, visitedPaths);
+        foundFiles.push(...safFiles);
+      } catch (safErr) {
+        console.warn('Error en escaneo SAF, reintentando con selección de carpeta:', safErr);
+        await clearSavedScanDirectoryUri();
+        const permResult = await requestScanDirectoryPermissions();
+        if (permResult.granted && permResult.directoryUri) {
+          folderUri = permResult.directoryUri;
+          folderName = permResult.name || getDirectoryDisplayName(folderUri);
+          const safFiles = await scanSafDirectory(folderUri, onProgress, 0, visitedPaths);
+          foundFiles.push(...safFiles);
+        } else {
+          return { files: [], cancelled: true };
+        }
+      }
+    }
+  }
+
+  // 2. Escanear directorios de la app (documentDirectory y cacheDirectory) y carpetas comunes si son accesibles
+  const standardDirectories: string[] = [
     FileSystem.documentDirectory || '',
     FileSystem.cacheDirectory || '',
   ];
 
-  const androidCommonPaths = [
-    'file:///storage/emulated/0/Download/',
-    'file:///storage/emulated/0/Documents/',
-    'file:///storage/emulated/0/Books/',
-  ];
-
-  for (const path of androidCommonPaths) {
-    baseDirectories.push(path);
+  if (Platform.OS === 'android') {
+    const testPaths = [
+      'file:///storage/emulated/0/Download/',
+      'file:///storage/emulated/0/Documents/',
+      'file:///storage/emulated/0/Books/',
+    ];
+    for (const p of testPaths) {
+      standardDirectories.push(p);
+    }
   }
 
-  const scanFolder = async (dirUri: string, depth: number = 0) => {
+  const scanStandardFolder = async (dirUri: string, depth: number = 0) => {
     if (!dirUri || depth > 3) return;
     try {
       const dirInfo = await FileSystem.getInfoAsync(dirUri);
@@ -47,26 +277,28 @@ export async function autoScanDeviceDirectories(
         if (item.startsWith('.')) continue;
 
         const itemUri = dirUri.endsWith('/') ? `${dirUri}${item}` : `${dirUri}/${item}`;
-        if (scannedPathsSet.has(itemUri)) continue;
-        scannedPathsSet.add(itemUri);
+        if (visitedPaths.has(itemUri)) continue;
+        visitedPaths.add(itemUri);
 
         try {
           const itemInfo = await FileSystem.getInfoAsync(itemUri);
           if (!itemInfo.exists) continue;
           if (itemInfo.isDirectory) {
-            await scanFolder(itemUri, depth + 1);
+            await scanStandardFolder(itemUri, depth + 1);
           } else {
-            const ext = item.split('.').pop()?.toLowerCase();
+            const ext = item.split('.').pop()?.toLowerCase() || '';
             let format: BookFormat | null = null;
             if (ext === 'epub') format = 'EPUB';
             else if (ext === 'pdf') format = 'PDF';
             else if (ext === 'txt') format = 'TXT';
             else if (ext === 'mp3' || ext === 'm4b') format = 'AUDIOBOOK';
+            else if (ext === 'mobi') format = 'MOBI';
+            else if (ext === 'fb2') format = 'FB2';
 
             if (format) {
               if (onProgress) onProgress(item);
               foundFiles.push({
-                id: `auto_${Date.now()}_${Math.random()}`,
+                id: `std_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
                 name: item,
                 uri: itemUri,
                 size: itemInfo.size || 0,
@@ -81,11 +313,32 @@ export async function autoScanDeviceDirectories(
     } catch (eDir) {}
   };
 
-  for (const dir of baseDirectories) {
-    await scanFolder(dir, 0);
+  for (const stdDir of standardDirectories) {
+    if (stdDir) {
+      await scanStandardFolder(stdDir, 0);
+    }
   }
 
-  return foundFiles;
+  // Deduplicar archivos encontrados por nombre y tamaño aproximado
+  const uniqueFiles: ScannedFile[] = [];
+  const seenKey = new Set<string>();
+
+  for (const f of foundFiles) {
+    const key = `${f.name.toLowerCase()}_${f.size}`;
+    if (!seenKey.has(key)) {
+      seenKey.add(key);
+      uniqueFiles.push(f);
+    }
+  }
+
+  return { files: uniqueFiles, folderName };
+}
+
+export async function autoScanDeviceDirectories(
+  onProgress?: (folder: string) => void
+): Promise<ScannedFile[]> {
+  const result = await scanDeviceBooks({ onProgress });
+  return result.files;
 }
 
 export async function copyFileToPermanentStorage(fromUri: string, targetPath: string): Promise<boolean> {
