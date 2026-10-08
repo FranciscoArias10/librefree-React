@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Book, Bookmark, Collection, ReadingSettings, Tag } from '../types/book';
+import { Book, Bookmark, Collection, ReadingSettings, Tag, Profile } from '../types/book';
 
 const DB_NAME = 'ereader_library.db';
 
@@ -64,6 +64,7 @@ export async function initDatabase(): Promise<void> {
     CREATE TABLE IF NOT EXISTS bookmarks (
       id TEXT PRIMARY KEY NOT NULL,
       bookId TEXT NOT NULL,
+      profileId TEXT,
       cfiOrPage TEXT NOT NULL,
       chapterTitle TEXT,
       snippet TEXT,
@@ -96,14 +97,60 @@ export async function initDatabase(): Promise<void> {
       FOREIGN KEY (bookId) REFERENCES books (id) ON DELETE CASCADE,
       FOREIGN KEY (tagId) REFERENCES tags (id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS profiles (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      avatar TEXT DEFAULT '👤',
+      color TEXT DEFAULT '#3B82F6',
+      createdAt INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS profile_book_progress (
+      profileId TEXT NOT NULL,
+      bookId TEXT NOT NULL,
+      progressPercentage REAL DEFAULT 0,
+      currentLocation TEXT,
+      currentChapter TEXT,
+      lastReadAt INTEGER,
+      favorite INTEGER DEFAULT 0,
+      PRIMARY KEY (profileId, bookId),
+      FOREIGN KEY (profileId) REFERENCES profiles (id) ON DELETE CASCADE,
+      FOREIGN KEY (bookId) REFERENCES books (id) ON DELETE CASCADE
+    );
   `);
 
   try {
     await db.execAsync(`ALTER TABLE bookmarks ADD COLUMN color TEXT DEFAULT '#FACC15';`);
   } catch (e) {}
 
+  try {
+    await db.execAsync(`ALTER TABLE bookmarks ADD COLUMN profileId TEXT;`);
+  } catch (e) {}
+
+  await seedDefaultProfile();
   await seedDefaultTags();
   await removeSampleBooks();
+}
+
+async function seedDefaultProfile(): Promise<void> {
+  const db = await getDB();
+  const existing = await db.getAllAsync<{ count: number }>('SELECT COUNT(*) as count FROM profiles;');
+  if (!existing || !existing[0] || existing[0].count === 0) {
+    await db.runAsync(
+      `INSERT INTO profiles (id, name, avatar, color, createdAt) VALUES (?, ?, ?, ?, ?);`,
+      ['profile_default', 'Principal', '👤', '#3B82F6', Date.now()]
+    );
+  }
+
+  const activeSetting = await db.getFirstAsync<{ value: string }>(
+    `SELECT value FROM user_settings WHERE key = 'active_profile_id';`
+  );
+  if (!activeSetting) {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO user_settings (key, value) VALUES ('active_profile_id', 'profile_default');`
+    );
+  }
 }
 
 async function seedDefaultTags(): Promise<void> {
@@ -133,7 +180,22 @@ async function removeSampleBooks(): Promise<void> {
 
 export async function getAllBooks(): Promise<Book[]> {
   const db = await getDB();
-  const rows = await db.getAllAsync<any>('SELECT * FROM books ORDER BY lastReadAt DESC, addedAt DESC;');
+  const activeProfileId = await getActiveProfileId();
+
+  const rows = await db.getAllAsync<any>(
+    `SELECT 
+       b.id, b.title, b.author, b.format, b.filePath, b.coverPath, b.fileSize, b.addedAt,
+       b.totalPagesOrDuration, b.genre, b.collectionId, b.description,
+       COALESCE(pbp.progressPercentage, b.progressPercentage, 0) as progressPercentage,
+       COALESCE(pbp.currentLocation, b.currentLocation) as currentLocation,
+       COALESCE(pbp.currentChapter, b.currentChapter) as currentChapter,
+       COALESCE(pbp.lastReadAt, b.lastReadAt) as lastReadAt,
+       COALESCE(pbp.favorite, b.favorite, 0) as favorite
+     FROM books b
+     LEFT JOIN profile_book_progress pbp ON pbp.bookId = b.id AND pbp.profileId = ?
+     ORDER BY COALESCE(pbp.lastReadAt, b.lastReadAt) DESC, b.addedAt DESC;`,
+    [activeProfileId]
+  );
   
   // Get all book tags in one query
   const tagRows = await db.getAllAsync<{ bookId: string; id: string; name: string; color: string }>(
@@ -157,7 +219,22 @@ export async function getAllBooks(): Promise<Book[]> {
 
 export async function getBookById(id: string): Promise<Book | null> {
   const db = await getDB();
-  const row = await db.getFirstAsync<any>('SELECT * FROM books WHERE id = ?;', [id]);
+  const activeProfileId = await getActiveProfileId();
+
+  const row = await db.getFirstAsync<any>(
+    `SELECT 
+       b.id, b.title, b.author, b.format, b.filePath, b.coverPath, b.fileSize, b.addedAt,
+       b.totalPagesOrDuration, b.genre, b.collectionId, b.description,
+       COALESCE(pbp.progressPercentage, b.progressPercentage, 0) as progressPercentage,
+       COALESCE(pbp.currentLocation, b.currentLocation) as currentLocation,
+       COALESCE(pbp.currentChapter, b.currentChapter) as currentChapter,
+       COALESCE(pbp.lastReadAt, b.lastReadAt) as lastReadAt,
+       COALESCE(pbp.favorite, b.favorite, 0) as favorite
+     FROM books b
+     LEFT JOIN profile_book_progress pbp ON pbp.bookId = b.id AND pbp.profileId = ?
+     WHERE b.id = ?;`,
+    [activeProfileId, id]
+  );
   if (!row) return null;
 
   const tagRows = await db.getAllAsync<{ id: string; name: string; color: string }>(
@@ -200,6 +277,21 @@ export async function addBook(book: Omit<Book, 'id' | 'addedAt'>): Promise<Book>
 export async function updateBookProgress(id: string, progressPercentage: number, currentLocation: string, currentChapter?: string): Promise<void> {
   const db = await getDB();
   const now = Date.now();
+  const activeProfileId = await getActiveProfileId();
+
+  // Save to active profile's progress
+  await db.runAsync(
+    `INSERT INTO profile_book_progress (profileId, bookId, progressPercentage, currentLocation, currentChapter, lastReadAt)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(profileId, bookId) DO UPDATE SET 
+       progressPercentage = excluded.progressPercentage,
+       currentLocation = excluded.currentLocation,
+       currentChapter = excluded.currentChapter,
+       lastReadAt = excluded.lastReadAt;`,
+    [activeProfileId, id, progressPercentage, currentLocation, currentChapter || null, now]
+  );
+
+  // Fallback / legacy cache in books table
   await db.runAsync(
     `UPDATE books SET progressPercentage = ?, currentLocation = ?, currentChapter = ?, lastReadAt = ? WHERE id = ?;`,
     [progressPercentage, currentLocation, currentChapter || null, now, id]
@@ -234,6 +326,15 @@ export async function getExtractedBookText(bookId: string): Promise<string | nul
 
 export async function toggleFavorite(id: string, isFavorite: boolean): Promise<void> {
   const db = await getDB();
+  const activeProfileId = await getActiveProfileId();
+
+  await db.runAsync(
+    `INSERT INTO profile_book_progress (profileId, bookId, favorite)
+     VALUES (?, ?, ?)
+     ON CONFLICT(profileId, bookId) DO UPDATE SET favorite = excluded.favorite;`,
+    [activeProfileId, id, isFavorite ? 1 : 0]
+  );
+
   await db.runAsync(`UPDATE books SET favorite = ? WHERE id = ?;`, [isFavorite ? 1 : 0, id]);
 }
 
@@ -265,16 +366,25 @@ export async function saveReadingSettings(settings: ReadingSettings): Promise<vo
 
 export async function getBookmarks(bookId: string): Promise<Bookmark[]> {
   const db = await getDB();
-  return db.getAllAsync<Bookmark>('SELECT * FROM bookmarks WHERE bookId = ? ORDER BY createdAt DESC;', [bookId]);
+  const activeProfileId = await getActiveProfileId();
+  return db.getAllAsync<Bookmark>(
+    `SELECT * FROM bookmarks 
+     WHERE bookId = ? AND (profileId = ? OR profileId IS NULL)
+     ORDER BY createdAt DESC;`,
+    [bookId, activeProfileId]
+  );
 }
 
 export async function getAllBookmarks(): Promise<(Bookmark & { bookTitle: string; bookAuthor: string; bookFormat: string; coverPath?: string })[]> {
   const db = await getDB();
+  const activeProfileId = await getActiveProfileId();
   return db.getAllAsync<Bookmark & { bookTitle: string; bookAuthor: string; bookFormat: string; coverPath?: string }>(
     `SELECT b.*, k.title as bookTitle, k.author as bookAuthor, k.format as bookFormat, k.coverPath
      FROM bookmarks b
      JOIN books k ON b.bookId = k.id
-     ORDER BY b.createdAt DESC;`
+     WHERE (b.profileId = ? OR b.profileId IS NULL)
+     ORDER BY b.createdAt DESC;`,
+    [activeProfileId]
   );
 }
 
@@ -283,16 +393,91 @@ export async function addBookmark(bookmark: Omit<Bookmark, 'id' | 'createdAt'>):
   const id = 'bm_' + Math.random().toString(36).substring(2, 10);
   const createdAt = Date.now();
   const color = bookmark.color || '#FACC15';
+  const activeProfileId = bookmark.profileId || await getActiveProfileId();
   await db.runAsync(
-    `INSERT INTO bookmarks (id, bookId, cfiOrPage, chapterTitle, snippet, color, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?);`,
-    [id, bookmark.bookId, bookmark.cfiOrPage, bookmark.chapterTitle || null, bookmark.snippet || null, color, createdAt]
+    `INSERT INTO bookmarks (id, bookId, profileId, cfiOrPage, chapterTitle, snippet, color, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+    [id, bookmark.bookId, activeProfileId, bookmark.cfiOrPage, bookmark.chapterTitle || null, bookmark.snippet || null, color, createdAt]
   );
-  return { ...bookmark, id, color, createdAt };
+  return { ...bookmark, id, profileId: activeProfileId, color, createdAt };
 }
 
 export async function deleteBookmark(id: string): Promise<void> {
   const db = await getDB();
   await db.runAsync('DELETE FROM bookmarks WHERE id = ?;', [id]);
+}
+
+// --- Profile Management ---
+
+export async function getActiveProfileId(): Promise<string> {
+  const db = await getDB();
+  const row = await db.getFirstAsync<{ value: string }>(
+    `SELECT value FROM user_settings WHERE key = 'active_profile_id';`
+  );
+  return row?.value || 'profile_default';
+}
+
+export async function getActiveProfile(): Promise<Profile> {
+  const db = await getDB();
+  const profileId = await getActiveProfileId();
+  let row = await db.getFirstAsync<Profile>(`SELECT * FROM profiles WHERE id = ?;`, [profileId]);
+  if (!row) {
+    row = await db.getFirstAsync<Profile>(`SELECT * FROM profiles ORDER BY createdAt ASC LIMIT 1;`);
+  }
+  if (!row) {
+    return { id: 'profile_default', name: 'Principal', avatar: '👤', color: '#3B82F6', createdAt: Date.now() };
+  }
+  return row;
+}
+
+export async function setActiveProfile(profileId: string): Promise<void> {
+  const db = await getDB();
+  await db.runAsync(
+    `INSERT INTO user_settings (key, value) VALUES ('active_profile_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value;`,
+    [profileId]
+  );
+}
+
+export async function getAllProfiles(): Promise<Profile[]> {
+  const db = await getDB();
+  return db.getAllAsync<Profile>('SELECT * FROM profiles ORDER BY createdAt ASC;');
+}
+
+export async function createProfile(name: string, avatar: string = '👤', color: string = '#3B82F6'): Promise<Profile> {
+  const db = await getDB();
+  const id = 'profile_' + Math.random().toString(36).substring(2, 10);
+  const trimmed = name.trim();
+  const createdAt = Date.now();
+  await db.runAsync(
+    `INSERT INTO profiles (id, name, avatar, color, createdAt) VALUES (?, ?, ?, ?, ?);`,
+    [id, trimmed, avatar, color, createdAt]
+  );
+  return { id, name: trimmed, avatar, color, createdAt };
+}
+
+export async function updateProfile(id: string, name: string, avatar: string = '👤', color: string = '#3B82F6'): Promise<void> {
+  const db = await getDB();
+  await db.runAsync(
+    `UPDATE profiles SET name = ?, avatar = ?, color = ? WHERE id = ?;`,
+    [name.trim(), avatar, color, id]
+  );
+}
+
+export async function deleteProfile(id: string): Promise<void> {
+  const db = await getDB();
+  const all = await getAllProfiles();
+  if (all.length <= 1) {
+    throw new Error('No puedes eliminar el único perfil existente.');
+  }
+  const activeId = await getActiveProfileId();
+  if (activeId === id) {
+    const next = all.find((p) => p.id !== id);
+    if (next) {
+      await setActiveProfile(next.id);
+    }
+  }
+  await db.runAsync(`DELETE FROM profile_book_progress WHERE profileId = ?;`, [id]);
+  await db.runAsync(`DELETE FROM bookmarks WHERE profileId = ?;`, [id]);
+  await db.runAsync(`DELETE FROM profiles WHERE id = ?;`, [id]);
 }
 
 // --- Tag Management ---

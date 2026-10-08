@@ -27,6 +27,7 @@ export interface ReadingSettings {
 export interface Bookmark {
   id: string;
   bookId: string;
+  profileId?: string;
   cfiOrPage: string; // CFI string for EPUB or page number for PDF/TXT
   chapterTitle?: string;
   snippet?: string;
@@ -45,6 +46,14 @@ export interface Tag {
   id: string;
   name: string;
   color?: string;
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  avatar: string;
+  color: string;
+  createdAt: number;
 }
 
 export interface Book {
