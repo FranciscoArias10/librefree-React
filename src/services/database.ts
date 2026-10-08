@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Book, Bookmark, Collection, ReadingSettings } from '../types/book';
+import { Book, Bookmark, Collection, ReadingSettings, Tag } from '../types/book';
 
 const DB_NAME = 'ereader_library.db';
 
@@ -82,13 +82,48 @@ export async function initDatabase(): Promise<void> {
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS tags (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      color TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS book_tags (
+      bookId TEXT NOT NULL,
+      tagId TEXT NOT NULL,
+      PRIMARY KEY (bookId, tagId),
+      FOREIGN KEY (bookId) REFERENCES books (id) ON DELETE CASCADE,
+      FOREIGN KEY (tagId) REFERENCES tags (id) ON DELETE CASCADE
+    );
   `);
 
   try {
     await db.execAsync(`ALTER TABLE bookmarks ADD COLUMN color TEXT DEFAULT '#FACC15';`);
   } catch (e) {}
 
+  await seedDefaultTags();
   await removeSampleBooks();
+}
+
+async function seedDefaultTags(): Promise<void> {
+  const db = await getDB();
+  const existing = await db.getAllAsync<{ count: number }>('SELECT COUNT(*) as count FROM tags;');
+  if (existing && existing[0] && existing[0].count > 0) return;
+
+  const defaultTags = [
+    { id: 'tag_estudio', name: 'Estudio', color: '#3B82F6' },
+    { id: 'tag_ficcion', name: 'Ficción', color: '#8B5CF6' },
+    { id: 'tag_favoritos', name: 'Favoritos', color: '#EF4444' },
+    { id: 'tag_por_leer', name: 'Por Leer', color: '#F59E0B' },
+  ];
+
+  for (const tag of defaultTags) {
+    await db.runAsync(
+      `INSERT OR IGNORE INTO tags (id, name, color) VALUES (?, ?, ?);`,
+      [tag.id, tag.name, tag.color]
+    );
+  }
 }
 
 async function removeSampleBooks(): Promise<void> {
@@ -99,9 +134,24 @@ async function removeSampleBooks(): Promise<void> {
 export async function getAllBooks(): Promise<Book[]> {
   const db = await getDB();
   const rows = await db.getAllAsync<any>('SELECT * FROM books ORDER BY lastReadAt DESC, addedAt DESC;');
+  
+  // Get all book tags in one query
+  const tagRows = await db.getAllAsync<{ bookId: string; id: string; name: string; color: string }>(
+    `SELECT bt.bookId, t.id, t.name, t.color 
+     FROM book_tags bt 
+     JOIN tags t ON bt.tagId = t.id;`
+  );
+
+  const tagsByBook: Record<string, any[]> = {};
+  for (const tr of tagRows) {
+    if (!tagsByBook[tr.bookId]) tagsByBook[tr.bookId] = [];
+    tagsByBook[tr.bookId].push({ id: tr.id, name: tr.name, color: tr.color });
+  }
+
   return rows.map(r => ({
     ...r,
-    favorite: Boolean(r.favorite)
+    favorite: Boolean(r.favorite),
+    tags: tagsByBook[r.id] || []
   }));
 }
 
@@ -109,9 +159,19 @@ export async function getBookById(id: string): Promise<Book | null> {
   const db = await getDB();
   const row = await db.getFirstAsync<any>('SELECT * FROM books WHERE id = ?;', [id]);
   if (!row) return null;
+
+  const tagRows = await db.getAllAsync<{ id: string; name: string; color: string }>(
+    `SELECT t.id, t.name, t.color 
+     FROM book_tags bt 
+     JOIN tags t ON bt.tagId = t.id 
+     WHERE bt.bookId = ?;`,
+    [id]
+  );
+
   return {
     ...row,
-    favorite: Boolean(row.favorite)
+    favorite: Boolean(row.favorite),
+    tags: tagRows
   };
 }
 
@@ -233,4 +293,64 @@ export async function addBookmark(bookmark: Omit<Bookmark, 'id' | 'createdAt'>):
 export async function deleteBookmark(id: string): Promise<void> {
   const db = await getDB();
   await db.runAsync('DELETE FROM bookmarks WHERE id = ?;', [id]);
+}
+
+// --- Tag Management ---
+
+export async function getAllTags(): Promise<Tag[]> {
+  const db = await getDB();
+  return db.getAllAsync<Tag>('SELECT * FROM tags ORDER BY name ASC;');
+}
+
+export async function createTag(name: string, color: string = '#3B82F6'): Promise<Tag> {
+  const db = await getDB();
+  const id = 'tag_' + Math.random().toString(36).substring(2, 10);
+  const trimmedName = name.trim();
+
+  await db.runAsync(
+    `INSERT INTO tags (id, name, color) VALUES (?, ?, ?);`,
+    [id, trimmedName, color]
+  );
+
+  return { id, name: trimmedName, color };
+}
+
+export async function deleteTag(tagId: string): Promise<void> {
+  const db = await getDB();
+  await db.runAsync(`DELETE FROM book_tags WHERE tagId = ?;`, [tagId]);
+  await db.runAsync(`DELETE FROM tags WHERE id = ?;`, [tagId]);
+}
+
+export async function getBookTags(bookId: string): Promise<Tag[]> {
+  const db = await getDB();
+  return db.getAllAsync<Tag>(
+    `SELECT t.id, t.name, t.color 
+     FROM book_tags bt 
+     JOIN tags t ON bt.tagId = t.id 
+     WHERE bt.bookId = ? 
+     ORDER BY t.name ASC;`,
+    [bookId]
+  );
+}
+
+export async function setBookTags(bookId: string, tagIds: string[]): Promise<void> {
+  const db = await getDB();
+  await db.runAsync(`DELETE FROM book_tags WHERE bookId = ?;`, [bookId]);
+  for (const tagId of tagIds) {
+    await db.runAsync(`INSERT OR IGNORE INTO book_tags (bookId, tagId) VALUES (?, ?);`, [bookId, tagId]);
+  }
+}
+
+export async function addTagToBooks(bookIds: string[], tagId: string): Promise<void> {
+  const db = await getDB();
+  for (const bookId of bookIds) {
+    await db.runAsync(`INSERT OR IGNORE INTO book_tags (bookId, tagId) VALUES (?, ?);`, [bookId, tagId]);
+  }
+}
+
+export async function removeTagFromBooks(bookIds: string[], tagId: string): Promise<void> {
+  const db = await getDB();
+  for (const bookId of bookIds) {
+    await db.runAsync(`DELETE FROM book_tags WHERE bookId = ? AND tagId = ?;`, [bookId, tagId]);
+  }
 }

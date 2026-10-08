@@ -124,9 +124,24 @@ export const BookCard: React.FC<BookCardProps> = ({
           </Text>
 
           <View style={styles.listFooterRow}>
-            <View style={[styles.badge, { backgroundColor: badge.color, marginRight: 8 }]}>
+            <View style={[styles.badge, { backgroundColor: badge.color, marginRight: 6 }]}>
               <Text style={styles.badgeText}>{badge.label}</Text>
             </View>
+
+            {book.tags && book.tags.length > 0 && (
+              <View style={styles.tagBadgeRow}>
+                {book.tags.slice(0, 2).map((tag) => (
+                  <View key={tag.id} style={[styles.tagPill, { backgroundColor: (tag.color || '#3B82F6') + '25', borderColor: tag.color || '#3B82F6' }]}>
+                    <Text style={[styles.tagPillText, { color: tag.color || '#3B82F6' }]} numberOfLines={1}>
+                      {tag.name}
+                    </Text>
+                  </View>
+                ))}
+                {book.tags.length > 2 && (
+                  <Text style={[styles.moreTagsText, { color: theme.textMuted }]}>+{book.tags.length - 2}</Text>
+                )}
+              </View>
+            )}
 
             <View style={styles.listProgressWrapper}>
               <View style={[styles.progressBarBackground, { backgroundColor: theme.bgChip }]}>
@@ -195,6 +210,14 @@ export const BookCard: React.FC<BookCardProps> = ({
             />
           </TouchableOpacity>
         )}
+
+        {book.tags && book.tags.length > 0 && (
+          <View style={styles.gridTagOverlay}>
+            {book.tags.slice(0, 3).map((tag) => (
+              <View key={tag.id} style={[styles.tagDot, { backgroundColor: tag.color || '#3B82F6' }]} />
+            ))}
+          </View>
+        )}
       </View>
 
       <View style={[styles.details, { padding: isGrid3 ? 6 : 10 }]}>
@@ -205,6 +228,17 @@ export const BookCard: React.FC<BookCardProps> = ({
           <Text style={[styles.author, { color: theme.textSecondary }]} numberOfLines={1}>
             {book.author}
           </Text>
+        )}
+        {!isGrid3 && book.tags && book.tags.length > 0 && (
+          <View style={[styles.tagBadgeRow, { marginBottom: 6 }]}>
+            {book.tags.slice(0, 2).map((tag) => (
+              <View key={tag.id} style={[styles.tagPillSmall, { backgroundColor: (tag.color || '#3B82F6') + '20', borderColor: (tag.color || '#3B82F6') + '40' }]}>
+                <Text style={[styles.tagPillTextSmall, { color: tag.color || '#3B82F6' }]} numberOfLines={1}>
+                  {tag.name}
+                </Text>
+              </View>
+            ))}
+          </View>
         )}
         <View style={styles.progressContainer}>
           <View style={[styles.progressBarBackground, { backgroundColor: theme.bgChip }]}>
@@ -427,5 +461,55 @@ const styles = StyleSheet.create({
   progressText: {
     fontSize: 10,
     fontWeight: '600',
+  },
+  tagBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  tagPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginRight: 4,
+    maxWidth: 70,
+  },
+  tagPillText: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  moreTagsText: {
+    fontSize: 9,
+    fontWeight: '600',
+    marginRight: 4,
+  },
+  gridTagOverlay: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  tagDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  tagPillSmall: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginRight: 4,
+    maxWidth: 65,
+  },
+  tagPillTextSmall: {
+    fontSize: 8.5,
+    fontWeight: '700',
   },
 });

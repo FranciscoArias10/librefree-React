@@ -16,15 +16,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { getAllBooks, toggleFavorite, deleteBook, getAllBookmarks, deleteBookmark } from '../../services/database';
+import { getAllBooks, toggleFavorite, deleteBook, getAllBookmarks, deleteBookmark, getAllTags, setBookTags, addTagToBooks } from '../../services/database';
 import { pickMultipleBooksByFormat, bulkImportBooks } from '../../services/fileScanner';
 import { BookCard } from '../../components/BookCard';
 import { BookmarkItemCard, BookmarkWithBookInfo } from '../../components/BookmarkItemCard';
 import { BackgroundCoverProcessor } from '../../components/BackgroundCoverProcessor';
 import { Toast } from '../../components/Toast';
 import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal';
+import { AssignTagsModal } from '../../components/AssignTagsModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Book } from '../../types/book';
+import { Book, Tag } from '../../types/book';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -33,14 +34,17 @@ export default function BookshelfScreen() {
   const { theme } = useTheme();
   const [books, setBooks] = useState<Book[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkWithBookInfo[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingBookmarks, setLoadingBookmarks] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'FAVORITES' | 'BOOKMARKS' | 'EPUB' | 'PDF' | 'TXT'>('ALL');
+  const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
   const [layoutMode, setLayoutMode] = useState<'grid2' | 'grid3' | 'list'>('grid2');
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [assignTagsModalVisible, setAssignTagsModalVisible] = useState(false);
+  const [initialAssignedTagIds, setInitialAssignedTagIds] = useState<string[]>([]);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
     visible: false,
     message: '',
@@ -99,6 +103,15 @@ export default function BookshelfScreen() {
     }
   };
 
+  const fetchTags = async () => {
+    try {
+      const data = await getAllTags();
+      setAllTags(data);
+    } catch (err) {
+      console.error('Error cargando etiquetas:', err);
+    }
+  };
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
@@ -113,6 +126,7 @@ export default function BookshelfScreen() {
         const data = await getAllBooks();
         setBooks(data);
         await fetchBookmarks();
+        await fetchTags();
         setToast({
           visible: true,
           message: '✓ Estantería actualizada.',
@@ -130,8 +144,43 @@ export default function BookshelfScreen() {
     useCallback(() => {
       fetchBooks(books.length === 0);
       fetchBookmarks();
+      fetchTags();
     }, [books.length])
   );
+
+  const handleOpenAssignTags = (bookIds: string[]) => {
+    if (bookIds.length === 0) return;
+    if (bookIds.length === 1) {
+      const b = books.find((x) => x.id === bookIds[0]);
+      setInitialAssignedTagIds(b?.tags?.map((t) => t.id) || []);
+    } else {
+      setInitialAssignedTagIds([]);
+    }
+    setAssignTagsModalVisible(true);
+  };
+
+  const handleSaveTags = async (selectedTagIds: string[]) => {
+    try {
+      const targetIds = isSelectMode ? selectedBookIds : selectedBookIds;
+      for (const bId of targetIds) {
+        await setBookTags(bId, selectedTagIds);
+      }
+      await fetchBooks();
+      setToast({
+        visible: true,
+        message: '✓ Etiquetas actualizadas.',
+        type: 'success',
+      });
+      setIsSelectMode(false);
+      setSelectedBookIds([]);
+    } catch (e) {
+      setToast({
+        visible: true,
+        message: 'No se pudieron actualizar las etiquetas.',
+        type: 'error',
+      });
+    }
+  };
 
   const handleDeleteBookmark = async (id: string) => {
     try {
@@ -263,6 +312,10 @@ export default function BookshelfScreen() {
     if (selectedFilter === 'EPUB') return b.format === 'EPUB';
     if (selectedFilter === 'PDF') return b.format === 'PDF';
     if (selectedFilter === 'TXT') return b.format === 'TXT';
+    if (selectedFilter.startsWith('TAG_')) {
+      const tagId = selectedFilter.replace('TAG_', '');
+      return b.tags?.some((t) => t.id === tagId);
+    }
     return true;
   });
 
@@ -302,7 +355,18 @@ export default function BookshelfScreen() {
             {selectedBookIds.length} seleccionados
           </Text>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <TouchableOpacity
+              style={[styles.tagSelectionBtn, { backgroundColor: selectedBookIds.length > 0 ? theme.accent : theme.bgChip }]}
+              onPress={() => handleOpenAssignTags(selectedBookIds)}
+              disabled={selectedBookIds.length === 0}
+            >
+              <Feather name="tag" size={15} color={selectedBookIds.length > 0 ? '#FFFFFF' : theme.textMuted} />
+              <Text style={[styles.tagSelectionText, { color: selectedBookIds.length > 0 ? '#FFFFFF' : theme.textMuted }]}>
+                Etiquetar
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.selectAllBtn} onPress={handleSelectAllBooks}>
               <Text style={[styles.selectAllText, { color: theme.accent }]}>
                 {selectedBookIds.length === filteredBooks.length ? 'Ninguno' : 'Todos'}
@@ -397,31 +461,42 @@ export default function BookshelfScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filtersScroll}
         >
-          {[
-            { key: 'ALL', label: 'Todos' },
-            { key: 'BOOKMARKS', label: `🔖 Marcadores${bookmarks.length > 0 ? ` (${bookmarks.length})` : ''}` },
-            { key: 'FAVORITES', label: '★ Favoritos' },
-            { key: 'EPUB', label: 'EPUB' },
-            { key: 'PDF', label: 'PDF' },
-          ].map((f) => (
-            <TouchableOpacity
-              key={f.key}
-              style={[
-                styles.filterChip,
-                { backgroundColor: selectedFilter === f.key ? theme.bgChipSelected : theme.bgChip },
-              ]}
-              onPress={() => setSelectedFilter(f.key as any)}
-            >
-              <Text
+          {(
+            [
+              { key: 'ALL', label: 'Todos' },
+              { key: 'BOOKMARKS', label: `🔖 Marcadores${bookmarks.length > 0 ? ` (${bookmarks.length})` : ''}` },
+              { key: 'FAVORITES', label: '★ Favoritos' },
+              ...allTags.map((t) => ({ key: `TAG_${t.id}`, label: `🏷️ ${t.name}`, tagColor: t.color })),
+              { key: 'EPUB', label: 'EPUB' },
+              { key: 'PDF', label: 'PDF' },
+              { key: 'TXT', label: 'TXT' },
+            ] as { key: string; label: string; tagColor?: string }[]
+          ).map((f) => {
+            const isSelected = selectedFilter === f.key;
+            return (
+              <TouchableOpacity
+                key={f.key}
                 style={[
-                  styles.filterChipText,
-                  { color: selectedFilter === f.key ? theme.textChipSelected : theme.textChip },
+                  styles.filterChip,
+                  {
+                    backgroundColor: isSelected
+                      ? (f.tagColor || theme.bgChipSelected)
+                      : theme.bgChip,
+                  },
                 ]}
+                onPress={() => setSelectedFilter(f.key)}
               >
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    { color: isSelected ? '#FFFFFF' : theme.textChip },
+                  ]}
+                >
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
@@ -518,6 +593,14 @@ export default function BookshelfScreen() {
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteModalVisible(false)}
       />
+      <AssignTagsModal
+        visible={assignTagsModalVisible}
+        onClose={() => setAssignTagsModalVisible(false)}
+        selectedBookIds={selectedBookIds}
+        initialAssignedTagIds={initialAssignedTagIds}
+        onSaveTags={handleSaveTags}
+        onTagsUpdated={fetchTags}
+      />
     </SafeAreaView>
   );
 }
@@ -603,6 +686,20 @@ const styles = StyleSheet.create({
   selectAllText: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  tagSelectionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    elevation: 2,
+    marginRight: 2,
+  },
+  tagSelectionText: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginLeft: 4,
   },
   deleteSelectionBtn: {
     flexDirection: 'row',

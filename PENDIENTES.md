@@ -6,6 +6,7 @@
 ---
 
 ### ✅ Tareas Completadas Recientemente
+- [x] **Sistema de Etiquetas y Categorías Personalizadas**: Creación, asignación múltiple/lote y filtrado dinámico de etiquetas (*Estudio*, *Ficción*, *Favoritos*, *Por Leer*) en la estantería con badges de colores en `BookCard` y modal interactivo `AssignTagsModal`.
 - [x] **Generación Automática de Portadas al Importar (EPUB/PDF)**: Solucionada la extracción nativa de portadas EPUB inspeccionando manifiesto OPF en tiempo de importación (<50ms) y la generación en segundo plano para PDF mediante WebView renderizado off-screen sin suspensión de lienzo en Android.
 - [x] **Configuraciones Específicas por Formato (PDF vs EPUB)**: Opciones de lectura 100% independientes en `ReaderControlsModal` y Ajustes: Ajuste de vista (`pdfPageFit`: *Página Completa*, *Ajustar al Ancho*, *Ajustar a Altura*), contraste (*Alto Contraste*, *Suave*) e inversión nocturna para PDF; y tipografía, tamaño de letra, interlineado, márgenes y alineación para EPUB/TXT.
 - [x] **Catálogo y Selección de Voces (TTS)**: Permite listar, filtrar (español / todos los idiomas), probar muestra en vivo ("Probar Voz") y seleccionar voces específicas instaladas en el dispositivo (masculinas, femeninas, acentos regionalizados) desde Ajustes y guardarlas persistentemente.
@@ -24,7 +25,7 @@
 - [ ] **Mejoras al Marcador de Páginas**: Refinar el sistema de guardado de posición/página, permitiendo agregar notas breves a cada marcador y visualizarlas de forma clara en la pantalla principal y en el lector.
 
 #### 3. 🏷️ Sistema de Etiquetas para Libros
-- [ ] **Etiquetas / Categorías Personalizadas**: Permitir crear y asignar etiquetas (*Estudio*, *Ficción*, *Favoritos*, *Por Leer*) a los libros para filtrarlos en la biblioteca.
+- [x] **Etiquetas / Categorías Personalizadas**: Permitir crear y asignar etiquetas (*Estudio*, *Ficción*, *Favoritos*, *Por Leer*) a los libros para filtrarlos en la biblioteca.
 
 #### 4. 🗄️ Cuentas de Usuario y Base de Datos
 - [ ] **Gestión de Perfiles / Cuentas**: Definir la estructura de la base de datos local SQLite para soportar múltiples perfiles de lectura o sincronización opcional en la nube.

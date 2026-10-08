@@ -41,6 +41,12 @@ export interface Collection {
   bookCount?: number;
 }
 
+export interface Tag {
+  id: string;
+  name: string;
+  color?: string;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -59,6 +65,7 @@ export interface Book {
   favorite: boolean;
   collectionId?: string;
   description?: string;
+  tags?: Tag[];
 }
 
 export interface AudiobookTrack {
