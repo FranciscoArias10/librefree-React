@@ -18,6 +18,7 @@ import {
   getActiveProfile,
   setActiveProfile,
   createProfile,
+  updateProfile,
   deleteProfile,
 } from '../services/database';
 
@@ -53,10 +54,17 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
   const [selectedAvatar, setSelectedAvatar] = useState('👤');
   const [selectedColor, setSelectedColor] = useState('#3B82F6');
 
+  // Edit profile state
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editAvatar, setEditAvatar] = useState('👤');
+  const [editColor, setEditColor] = useState('#3B82F6');
+
   useEffect(() => {
     if (visible) {
       loadData();
       setIsCreating(false);
+      setEditingProfile(null);
       setNewProfileName('');
     }
   }, [visible]);
@@ -82,6 +90,44 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
       onClose();
     } catch (e) {
       Alert.alert('Error', 'No se pudo cambiar el perfil.');
+    }
+  };
+
+  const handleStartEdit = (profile: Profile) => {
+    setIsCreating(false);
+    setEditingProfile(profile);
+    setEditName(profile.name);
+    setEditAvatar(profile.avatar || '👤');
+    setEditColor(profile.color || '#3B82F6');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingProfile) return;
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      Alert.alert('Nombre requerido', 'Por favor ingresa un nombre para el perfil.');
+      return;
+    }
+
+    try {
+      await updateProfile(editingProfile.id, trimmed, editAvatar, editColor);
+      const updatedProfile: Profile = {
+        ...editingProfile,
+        name: trimmed,
+        avatar: editAvatar,
+        color: editColor,
+      };
+
+      if (activeProfile?.id === editingProfile.id) {
+        setActiveProfileState(updatedProfile);
+        DeviceEventEmitter.emit('PROFILE_CHANGED', updatedProfile);
+        if (onProfileChanged) onProfileChanged(updatedProfile);
+      }
+
+      setEditingProfile(null);
+      await loadData();
+    } catch (e) {
+      Alert.alert('Error', 'No se pudieron guardar los cambios del perfil.');
     }
   };
 
@@ -123,6 +169,9 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
           style: 'destructive',
           onPress: async () => {
             try {
+              if (editingProfile?.id === profile.id) {
+                setEditingProfile(null);
+              }
               await deleteProfile(profile.id);
               const remaining = await getAllProfiles();
               const current = await getActiveProfile();
@@ -204,21 +253,103 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
                     </View>
                   </TouchableOpacity>
 
-                  {profiles.length > 1 && (
+                  <View style={styles.profileItemActions}>
                     <TouchableOpacity
-                      style={styles.deleteBtn}
-                      onPress={() => handleDeleteProfile(p)}
+                      style={styles.actionIconBtn}
+                      onPress={() => handleStartEdit(p)}
                     >
-                      <Feather name="trash-2" size={16} color={theme.textMuted} />
+                      <Feather name="edit-2" size={16} color={theme.accent} />
                     </TouchableOpacity>
-                  )}
+
+                    {profiles.length > 1 && (
+                      <TouchableOpacity
+                        style={styles.actionIconBtn}
+                        onPress={() => handleDeleteProfile(p)}
+                      >
+                        <Feather name="trash-2" size={16} color={theme.textMuted} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               );
             })}
           </ScrollView>
 
-          {/* Create Profile Section */}
-          {isCreating ? (
+          {/* Edit Profile Section */}
+          {editingProfile ? (
+            <View style={[styles.createCard, { backgroundColor: theme.bg, borderColor: editColor }]}>
+              <View style={styles.editCardHeader}>
+                <Text style={[styles.createTitle, { color: theme.textCard, marginBottom: 0 }]}>
+                  Editar: {editingProfile.name}
+                </Text>
+                <TouchableOpacity onPress={() => setEditingProfile(null)} style={{ padding: 4 }}>
+                  <Feather name="x" size={18} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                style={[
+                  styles.input,
+                  { backgroundColor: theme.bgCard, color: theme.textCard, borderColor: theme.border },
+                ]}
+                placeholder="Nombre del perfil"
+                placeholderTextColor={theme.textMuted}
+                value={editName}
+                onChangeText={setEditName}
+                autoFocus
+              />
+
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Selecciona un Icono:</Text>
+              <View style={styles.avatarPickerRow}>
+                {PRESET_AVATARS.map((av) => (
+                  <TouchableOpacity
+                    key={av}
+                    style={[
+                      styles.avatarPickBtn,
+                      { backgroundColor: theme.bgCard, borderColor: editAvatar === av ? editColor : theme.border },
+                      editAvatar === av && { borderWidth: 2 },
+                    ]}
+                    onPress={() => setEditAvatar(av)}
+                  >
+                    <Text style={styles.avatarPickEmoji}>{av}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Color Temático:</Text>
+              <View style={styles.colorPickerRow}>
+                {PRESET_COLORS.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[
+                      styles.colorCircle,
+                      { backgroundColor: c },
+                      editColor === c && styles.selectedColorCircle,
+                    ]}
+                    onPress={() => setEditColor(c)}
+                  >
+                    {editColor === c && <Feather name="check" size={14} color="#FFF" />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.createActions}>
+                <TouchableOpacity
+                  style={[styles.smallBtn, { backgroundColor: theme.bgChip }]}
+                  onPress={() => setEditingProfile(null)}
+                >
+                  <Text style={{ color: theme.textCard, fontWeight: '600' }}>Cancelar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.smallBtn, { backgroundColor: editColor }]}
+                  onPress={handleSaveEdit}
+                >
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Guardar Cambios</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : isCreating ? (
             <View style={[styles.createCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
               <Text style={[styles.createTitle, { color: theme.textCard }]}>Nuevo Perfil</Text>
 
@@ -287,7 +418,10 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
           ) : (
             <TouchableOpacity
               style={[styles.addNewBtn, { borderColor: theme.border }]}
-              onPress={() => setIsCreating(true)}
+              onPress={() => {
+                setEditingProfile(null);
+                setIsCreating(true);
+              }}
             >
               <Feather name="plus-circle" size={18} color={theme.accent} />
               <Text style={[styles.addNewText, { color: theme.accent }]}>Crear nuevo perfil</Text>
@@ -399,6 +533,20 @@ const styles = StyleSheet.create({
   profileMeta: {
     fontSize: 11,
     marginTop: 2,
+  },
+  profileItemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  actionIconBtn: {
+    padding: 7,
+  },
+  editCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   deleteBtn: {
     padding: 8,
