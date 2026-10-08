@@ -6,6 +6,7 @@
 ---
 
 ### ✅ Tareas Completadas Recientemente
+- [x] **Escaneo Automático de Documentos del Dispositivo (SAF Android)**: Implementación de Storage Access Framework (SAF) para escaneo recurrente y automático de carpetas del celular (`Download`, `Documents`, `Books`, etc.), persistencia de la carpeta seleccionada en `AsyncStorage` para escaneo con 1 toque sin volver a solicitar permisos, detección de libros ya importados en biblioteca, extracción ultra rápida de portadas EPUB e interfaz mejorada en el modal "Documentos Encontrados".
 - [x] **Gestión de Perfiles Locales Offline**: Sistema multi-perfil 100% local (sin necesidad de cuentas ni internet) con avance de lectura, marcadores y favoritos independientes por perfil, selector dinámico en Estantería y Ajustes, y creación de perfiles con avatares de emoji y color temático.
 - [x] **Sistema de Etiquetas y Categorías Personalizadas**: Creación, asignación múltiple/lote y filtrado dinámico de etiquetas (*Estudio*, *Ficción*, *Favoritos*, *Por Leer*) en la estantería con badges de colores en `BookCard` y modal interactivo `AssignTagsModal`.
 - [x] **Generación Automática de Portadas al Importar (EPUB/PDF)**: Solucionada la extracción nativa de portadas EPUB inspeccionando manifiesto OPF en tiempo de importación (<50ms) y la generación en segundo plano para PDF mediante WebView renderizado off-screen sin suspensión de lienzo en Android.
