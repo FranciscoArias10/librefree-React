@@ -19,9 +19,12 @@ import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   autoScanDeviceDirectories,
+  scanDeviceBooks,
+  getSavedScanDirectoryName,
   pickMultipleBooksByFormat,
   bulkImportBooks,
   readBookContent,
+  extractEpubCoverNative,
   ScannedFile,
 } from '../../services/fileScanner';
 import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
@@ -43,6 +46,7 @@ export default function FileExplorerScreen() {
   const [isResultsModalVisible, setIsResultsModalVisible] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [currentScanningFolder, setCurrentScanningFolder] = useState('');
+  const [linkedFolderName, setLinkedFolderName] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importedBooks, setImportedBooks] = useState<Book[]>([]);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
@@ -58,6 +62,10 @@ export default function FileExplorerScreen() {
   const loadBooks = async () => {
     const books = await getAllBooks();
     setImportedBooks(books);
+    try {
+      const savedFolder = await getSavedScanDirectoryName();
+      if (savedFolder) setLinkedFolderName(savedFolder);
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -67,32 +75,114 @@ export default function FileExplorerScreen() {
   const handleStartAutoScan = async () => {
     try {
       setIsScanning(true);
-      setCurrentScanningFolder('Escaneando carpetas de Descargas y Documentos...');
+      setCurrentScanningFolder('Iniciando escaneo automático...');
       
-      let results = await autoScanDeviceDirectories((folder) => {
-        setCurrentScanningFolder(`Buscando en ${folder}...`);
+      const response = await scanDeviceBooks({
+        onProgress: (info) => {
+          setCurrentScanningFolder(info.includes('/') || info.includes('...') ? info : `Buscando: ${info}`);
+        },
       });
-
-      if (results.length === 0) {
-        results = await pickMultipleBooksByFormat('ALL');
-      }
 
       setIsScanning(false);
 
-      if (results.length === 0) {
-        setToast({ visible: true, message: 'No se encontraron nuevos archivos en el almacenamiento.', type: 'info' });
+      if (response.cancelled) {
+        setToast({ visible: true, message: 'Escaneo cancelado. Selecciona una carpeta para escanear tus libros.', type: 'info' });
         return;
       }
 
-      setScannedResults(results);
+      if (response.folderName) {
+        setLinkedFolderName(response.folderName);
+      }
+
+      const results = response.files;
+
+      if (results.length === 0) {
+        setToast({
+          visible: true,
+          message: `No se encontraron libros compatibles en ${response.folderName || 'el dispositivo'}.`,
+          type: 'info',
+        });
+        return;
+      }
+
+      // Preparar resultados marcando si ya están en biblioteca
+      const preparedResults = results.map((item) => {
+        const isAlreadyInLib = importedBooks.some((b) => {
+          const normTitle = b.title.trim().toLowerCase();
+          const fileTitle = item.name.replace(/\.[^/.]+$/, '').trim().toLowerCase();
+          return normTitle === fileTitle || b.filePath === item.uri;
+        });
+        return {
+          ...item,
+          selected: !isAlreadyInLib,
+        };
+      });
+
+      setScannedResults(preparedResults);
       setIsResultsModalVisible(true);
 
-      if (results.length > 0) {
-        processNextThumbnail(0, results);
+      if (preparedResults.length > 0) {
+        processNextThumbnail(0, preparedResults);
       }
     } catch (e) {
       setIsScanning(false);
+      console.error('Error durante el escaneo automático:', e);
       setToast({ visible: true, message: 'No se pudo completar el escaneo automático.', type: 'error' });
+    }
+  };
+
+  const handlePickNewFolder = async () => {
+    try {
+      setIsScanning(true);
+      setCurrentScanningFolder('Selecciona una carpeta para escanear...');
+
+      const response = await scanDeviceBooks({
+        forceRequestFolder: true,
+        onProgress: (info) => {
+          setCurrentScanningFolder(info.includes('/') || info.includes('...') ? info : `Buscando: ${info}`);
+        },
+      });
+
+      setIsScanning(false);
+
+      if (response.cancelled) {
+        setToast({ visible: true, message: 'Selección de carpeta cancelada.', type: 'info' });
+        return;
+      }
+
+      if (response.folderName) {
+        setLinkedFolderName(response.folderName);
+      }
+
+      const results = response.files;
+
+      if (results.length === 0) {
+        setToast({
+          visible: true,
+          message: `No se encontraron libros en ${response.folderName || 'la carpeta seleccionada'}.`,
+          type: 'info',
+        });
+        return;
+      }
+
+      const preparedResults = results.map((item) => {
+        const isAlreadyInLib = importedBooks.some((b) => {
+          const normTitle = b.title.trim().toLowerCase();
+          const fileTitle = item.name.replace(/\.[^/.]+$/, '').trim().toLowerCase();
+          return normTitle === fileTitle || b.filePath === item.uri;
+        });
+        return {
+          ...item,
+          selected: !isAlreadyInLib,
+        };
+      });
+
+      setScannedResults(preparedResults);
+      setIsResultsModalVisible(true);
+      processNextThumbnail(0, preparedResults);
+    } catch (e) {
+      setIsScanning(false);
+      setToast({ visible: true, message: 'Error al cambiar la carpeta.', type: 'error' });
     }
   };
 
@@ -101,9 +191,21 @@ export default function FileExplorerScreen() {
       const results = await pickMultipleBooksByFormat('ALL');
       if (results.length === 0) return;
       
-      setScannedResults(results);
+      const preparedResults = results.map((item) => {
+        const isAlreadyInLib = importedBooks.some((b) => {
+          const normTitle = b.title.trim().toLowerCase();
+          const fileTitle = item.name.replace(/\.[^/.]+$/, '').trim().toLowerCase();
+          return normTitle === fileTitle || b.filePath === item.uri;
+        });
+        return {
+          ...item,
+          selected: !isAlreadyInLib,
+        };
+      });
+
+      setScannedResults(preparedResults);
       setIsResultsModalVisible(true);
-      processNextThumbnail(0, results);
+      processNextThumbnail(0, preparedResults);
     } catch (e) {
       setToast({ visible: true, message: 'No se pudieron seleccionar los archivos manualmente.', type: 'error' });
     }
@@ -122,14 +224,29 @@ export default function FileExplorerScreen() {
       return;
     }
 
+    // Para TXT o Audiobooks no se requiere renderizado de portada offscreen
+    if (file.format === 'TXT' || file.format === 'AUDIOBOOK') {
+      processNextThumbnail(index + 1, list);
+      return;
+    }
+
     try {
       setCurrentProcessingIndex(index);
       const data = await readBookContent(file.uri, file.format);
       if (data.content && data.content.length > 5) {
-        if (file.format === 'PDF') {
-          setProcessingHtml(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, true, data.isBase64));
-        } else if (file.format === 'EPUB') {
+        if (file.format === 'EPUB') {
+          // Extracción nativa ultra rápida para EPUB (en milisegundos)
+          const nativeCover = await extractEpubCoverNative(data.content);
+          if (nativeCover) {
+            setScannedResults((prev) =>
+              prev.map((item, idx) => (idx === index ? { ...item, coverPath: nativeCover } : item))
+            );
+            processNextThumbnail(index + 1, list);
+            return;
+          }
           setProcessingHtml(getEpubReaderHTML(data.content, data.isBase64, undefined, DEFAULT_SETTINGS));
+        } else if (file.format === 'PDF') {
+          setProcessingHtml(getPdfReaderHTML(data.content, '1', DEFAULT_SETTINGS, true, data.isBase64));
         } else {
           processNextThumbnail(index + 1, list);
         }
@@ -234,10 +351,22 @@ export default function FileExplorerScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionTitle, { color: theme.textCard }]}>Búsqueda Automática</Text>
               <Text style={[styles.actionDesc, { color: theme.textSecondary }]}>
-                Presiona el botón para rastrear la memoria de tu celular en busca de archivos EPUB y PDF.
+                Rastrea la memoria de tu dispositivo para encontrar todos tus libros EPUB, PDF y documentos.
               </Text>
             </View>
           </View>
+
+          {linkedFolderName ? (
+            <View style={[styles.folderBadgeRow, { backgroundColor: theme.mode === 'dark' ? '#1F2937' : '#F1F5F9' }]}>
+              <Feather name="folder" size={15} color={theme.accent} style={{ marginRight: 8 }} />
+              <Text style={[styles.folderBadgeText, { color: theme.textSecondary }]}>
+                Carpeta vinculada: <Text style={{ fontWeight: '700', color: theme.textCard }}>{linkedFolderName}</Text>
+              </Text>
+              <TouchableOpacity onPress={handlePickNewFolder} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 'auto' }}>
+                <Text style={[styles.folderChangeText, { color: theme.accent }]}>Cambiar</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           {isScanning ? (
             <View style={[styles.scanningStatusBox, { backgroundColor: theme.mode === 'dark' ? '#1E3A8A' : '#EBF8FF' }]}>
@@ -253,9 +382,16 @@ export default function FileExplorerScreen() {
                 <Text style={[styles.scanBtnText, { color: theme.accentText }]}>Escanear Celular Automáticamente</Text>
               </TouchableOpacity>
               
-              <TouchableOpacity style={[styles.scanBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.accent }]} onPress={handleManualPick}>
-                <Feather name="folder" size={18} color={theme.accent} style={{ marginRight: 8 }} />
-                <Text style={[styles.scanBtnText, { color: theme.accent }]}>Explorar Archivos Manualmente</Text>
+              <TouchableOpacity style={[styles.scanBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.accent }]} onPress={handlePickNewFolder}>
+                <Feather name="folder-plus" size={18} color={theme.accent} style={{ marginRight: 8 }} />
+                <Text style={[styles.scanBtnText, { color: theme.accent }]}>
+                  {linkedFolderName ? 'Seleccionar Otra Carpeta para Escanear' : 'Elegir Carpeta de Libros'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.scanBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.border }]} onPress={handleManualPick}>
+                <Feather name="file-plus" size={18} color={theme.textSecondary} style={{ marginRight: 8 }} />
+                <Text style={[styles.scanBtnText, { color: theme.textSecondary }]}>Explorar Archivos Manualmente</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -321,6 +457,11 @@ export default function FileExplorerScreen() {
               {scannedResults.map((item) => {
                 const isPdf = item.format === 'PDF';
                 const isEpub = item.format === 'EPUB';
+                const isAlreadyInLib = importedBooks.some((b) => {
+                  const normTitle = b.title.trim().toLowerCase();
+                  const fileTitle = item.name.replace(/\.[^/.]+$/, '').trim().toLowerCase();
+                  return normTitle === fileTitle || b.filePath === item.uri;
+                });
 
                 return (
                   <TouchableOpacity
@@ -337,6 +478,18 @@ export default function FileExplorerScreen() {
                     <View style={[styles.coverFrame, { backgroundColor: theme.bg }]}>
                       {item.coverPath && item.coverPath.length > 50 ? (
                         <Image source={{ uri: item.coverPath }} style={styles.realCoverImage} resizeMode="cover" />
+                      ) : (item.format === 'TXT' || item.format === 'AUDIOBOOK') ? (
+                        <View style={[styles.coverPlaceholder, { backgroundColor: theme.bg }]}>
+                          <Ionicons
+                            name={item.format === 'AUDIOBOOK' ? 'headset' : 'document-text'}
+                            size={34}
+                            color={theme.accent}
+                            style={{ marginBottom: 6 }}
+                          />
+                          <Text style={[styles.coverPreviewLabel, { color: theme.textSecondary }]}>
+                            {item.format}
+                          </Text>
+                        </View>
                       ) : (
                         <View style={[styles.coverPlaceholder, { backgroundColor: theme.bg }]}>
                           <ActivityIndicator size="small" color={theme.accent} style={{ marginBottom: 6 }} />
@@ -371,6 +524,11 @@ export default function FileExplorerScreen() {
                       <Text style={[styles.cardBookSize, { color: theme.textSecondary }]} numberOfLines={1}>
                         {Math.round(item.size / 1024)} KB
                       </Text>
+                      {isAlreadyInLib && (
+                        <View style={styles.alreadyInLibBadge}>
+                          <Text style={styles.alreadyInLibText}>✓ En biblioteca</Text>
+                        </View>
+                      )}
                     </View>
                   </TouchableOpacity>
                 );
@@ -648,6 +806,34 @@ const styles = StyleSheet.create({
   },
   importConfirmText: {
     fontSize: 15,
+    fontWeight: '700',
+  },
+  folderBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+    marginBottom: 14,
+  },
+  folderBadgeText: {
+    fontSize: 13,
+  },
+  folderChangeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  alreadyInLibBadge: {
+    backgroundColor: '#10B981',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  alreadyInLibText: {
+    color: '#FFFFFF',
+    fontSize: 9,
     fontWeight: '700',
   },
 });
