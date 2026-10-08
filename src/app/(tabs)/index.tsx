@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { getAllBooks, toggleFavorite, deleteBook, getAllBookmarks, deleteBookmark, getAllTags, setBookTags, addTagToBooks } from '../../services/database';
+import { getAllBooks, toggleFavorite, deleteBook, getAllBookmarks, deleteBookmark, getAllTags, setBookTags, addTagToBooks, getActiveProfile } from '../../services/database';
 import { pickMultipleBooksByFormat, bulkImportBooks } from '../../services/fileScanner';
 import { BookCard } from '../../components/BookCard';
 import { BookmarkItemCard, BookmarkWithBookInfo } from '../../components/BookmarkItemCard';
@@ -24,8 +24,9 @@ import { BackgroundCoverProcessor } from '../../components/BackgroundCoverProces
 import { Toast } from '../../components/Toast';
 import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal';
 import { AssignTagsModal } from '../../components/AssignTagsModal';
+import { ProfileManagerModal } from '../../components/ProfileManagerModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Book, Tag } from '../../types/book';
+import { Book, Tag, Profile } from '../../types/book';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -35,6 +36,8 @@ export default function BookshelfScreen() {
   const [books, setBooks] = useState<Book[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkWithBookInfo[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingBookmarks, setLoadingBookmarks] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,11 +65,22 @@ export default function BookshelfScreen() {
       } catch (e) {}
     }
     loadLayout();
+    getActiveProfile().then(setActiveProfile);
 
     const coverSub = DeviceEventEmitter.addListener('BOOK_COVER_UPDATED', () => {
       fetchBooks();
     });
-    return () => coverSub.remove();
+
+    const profileSub = DeviceEventEmitter.addListener('PROFILE_CHANGED', (newProfile: Profile) => {
+      setActiveProfile(newProfile);
+      fetchBooks();
+      fetchBookmarks();
+    });
+
+    return () => {
+      coverSub.remove();
+      profileSub.remove();
+    };
   }, []);
 
   const handleToggleLayoutMode = async () => {
@@ -145,6 +159,7 @@ export default function BookshelfScreen() {
       fetchBooks(books.length === 0);
       fetchBookmarks();
       fetchTags();
+      getActiveProfile().then(setActiveProfile);
     }, [books.length])
   );
 
@@ -405,7 +420,30 @@ export default function BookshelfScreen() {
             </View>
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <TouchableOpacity
+              style={[
+                styles.profilePillBtn,
+                {
+                  backgroundColor: (activeProfile?.color || theme.accent) + '20',
+                  borderColor: activeProfile?.color || theme.accent,
+                },
+              ]}
+              onPress={() => setProfileModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 13 }}>{activeProfile?.avatar || '👤'}</Text>
+              <Text
+                style={[
+                  styles.profilePillText,
+                  { color: activeProfile?.color || theme.accent },
+                ]}
+                numberOfLines={1}
+              >
+                {activeProfile?.name || 'Principal'}
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.refreshHeaderBtn, { backgroundColor: theme.bgInput, borderColor: theme.border }]}
               onPress={handleRefresh}
@@ -601,6 +639,20 @@ export default function BookshelfScreen() {
         onSaveTags={handleSaveTags}
         onTagsUpdated={fetchTags}
       />
+      <ProfileManagerModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
+        onProfileChanged={(p) => {
+          setActiveProfile(p);
+          fetchBooks();
+          fetchBookmarks();
+          setToast({
+            visible: true,
+            message: `✓ Perfil cambiado a "${p.name}".`,
+            type: 'success',
+          });
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -637,6 +689,20 @@ const styles = StyleSheet.create({
   appSubtitle: {
     fontSize: 12,
     marginTop: 1,
+  },
+  profilePillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 5,
+    maxWidth: 120,
+  },
+  profilePillText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   refreshHeaderBtn: {
     width: 38,
