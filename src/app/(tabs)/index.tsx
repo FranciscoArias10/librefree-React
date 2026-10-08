@@ -419,48 +419,6 @@ export default function BookshelfScreen() {
               <Text style={[styles.appSubtitle, { color: theme.textSecondary }]}>Mi Estantería Virtual</Text>
             </View>
           </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <TouchableOpacity
-              style={[
-                styles.profilePillBtn,
-                {
-                  backgroundColor: (activeProfile?.color || theme.accent) + '20',
-                  borderColor: activeProfile?.color || theme.accent,
-                },
-              ]}
-              onPress={() => setProfileModalVisible(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontSize: 13 }}>{activeProfile?.avatar || '👤'}</Text>
-              <Text
-                style={[
-                  styles.profilePillText,
-                  { color: activeProfile?.color || theme.accent },
-                ]}
-                numberOfLines={1}
-              >
-                {activeProfile?.name || 'Principal'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.refreshHeaderBtn, { backgroundColor: theme.bgInput, borderColor: theme.border }]}
-              onPress={handleRefresh}
-              activeOpacity={0.7}
-            >
-              <Feather name="refresh-cw" size={16} color={theme.accent} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.importBtn, { backgroundColor: theme.accent }]}
-              onPress={handleImportBook}
-              activeOpacity={0.8}
-            >
-              <Feather name="plus" size={18} color="#FFFFFF" />
-              <Text style={styles.importBtnText}>Importar</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       )}
 
@@ -624,6 +582,17 @@ export default function BookshelfScreen() {
           )}
         />
       )}
+      {/* Floating Action Button para importar libros */}
+      {!isSelectMode && selectedFilter !== 'BOOKMARKS' && (
+        <TouchableOpacity
+          style={[styles.fabButton, { backgroundColor: theme.accent }]}
+          onPress={handleImportBook}
+          activeOpacity={0.85}
+        >
+          <Feather name="plus" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
+
       <ConfirmDeleteModal
         visible={deleteModalVisible}
         count={selectedBookIds.length}
@@ -661,7 +630,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 14,
   },
@@ -690,45 +658,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 1,
   },
-  profilePillBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 5,
-    maxWidth: 120,
-  },
-  profilePillText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  refreshHeaderBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    borderWidth: 1,
+  fabButton: {
+    position: 'absolute',
+    bottom: 90,
+    right: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  importBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    elevation: 3,
-    shadowColor: '#3182CE',
-    shadowOffset: { width: 0, height: 2 },
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  importBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-    marginLeft: 4,
+    shadowRadius: 6,
+    zIndex: 99,
   },
   selectionCancelBtn: {
     flexDirection: 'row',
