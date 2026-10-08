@@ -12,15 +12,17 @@ import {
   TextInput,
   ActivityIndicator,
   FlatList,
+  DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { useTheme } from '../../context/ThemeContext';
 import { Toast } from '../../components/Toast';
-import { getReadingSettings, saveReadingSettings, DEFAULT_SETTINGS } from '../../services/database';
+import { getReadingSettings, saveReadingSettings, DEFAULT_SETTINGS, getActiveProfile } from '../../services/database';
 import { fetchDeviceVoices, setTTSVoice, testVoiceSample, stopTTS } from '../../services/ttsService';
-import { ReadingSettings, PdfPageFit, PdfContrastMode, TextAlignmentMode } from '../../types/book';
+import { ReadingSettings, PdfPageFit, PdfContrastMode, TextAlignmentMode, Profile } from '../../types/book';
+import { ProfileManagerModal } from '../../components/ProfileManagerModal';
 
 function getLanguageFlag(lang: string): string {
   if (!lang) return '🌐';
@@ -72,7 +74,8 @@ export default function SettingsScreen() {
     message: '',
     type: 'success',
   });
-  const [cloudSyncEnabled, setCloudSyncEnabled] = useState(true);
+  const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
+  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
 
   // Settings & Voices State
   const [settings, setSettings] = useState<ReadingSettings>(DEFAULT_SETTINGS);
@@ -92,8 +95,12 @@ export default function SettingsScreen() {
     async function loadInitialData() {
       try {
         setLoadingVoices(true);
-        const savedSettings = await getReadingSettings();
+        const [savedSettings, currentProfile] = await Promise.all([
+          getReadingSettings(),
+          getActiveProfile(),
+        ]);
         setSettings(savedSettings);
+        setActiveProfile(currentProfile);
 
         const voices = await fetchDeviceVoices();
         setAvailableVoices(voices);
@@ -119,6 +126,13 @@ export default function SettingsScreen() {
       }
     }
     loadInitialData();
+
+    const profileSub = DeviceEventEmitter.addListener('PROFILE_CHANGED', (newProfile: Profile) => {
+      setActiveProfile(newProfile);
+    });
+    return () => {
+      profileSub.remove();
+    };
   }, []);
 
   const handleSelectVoice = async (voice: Speech.Voice) => {
@@ -358,39 +372,56 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* ── Cuenta y Sincronización ───────────────────────── */}
-        <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Cuenta y Sincronización</Text>
+        {/* ── Perfiles de Lectura (Local Offline) ─────────────── */}
+        <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Perfiles de Lectura (Local Offline)</Text>
         <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
           <View style={styles.accountRow}>
-            <View style={[styles.avatarBg, { backgroundColor: theme.accent }]}>
-              <Feather name="user" size={24} color="#FFFFFF" />
+            <View
+              style={[
+                styles.avatarBg,
+                {
+                  backgroundColor: (activeProfile?.color || theme.accent) + '22',
+                  borderColor: activeProfile?.color || theme.accent,
+                  borderWidth: 1.5,
+                },
+              ]}
+            >
+              <Text style={{ fontSize: 24 }}>{activeProfile?.avatar || '👤'}</Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: theme.textCard }]}>Usuario LibreFree</Text>
-              <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>usuario@librefree.org</Text>
-            </View>
-            <View style={[styles.cloudBadge, { backgroundColor: theme.bgBadgeCloud }]}>
-              <Feather name="cloud" size={14} color="#27AE60" />
-              <Text style={styles.cloudBadgeText}>Conectado</Text>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.settingTitle, { color: theme.textCard }]}>
+                  {activeProfile?.name || 'Perfil Principal'}
+                </Text>
+                <View
+                  style={[
+                    styles.cloudBadge,
+                    { backgroundColor: (activeProfile?.color || theme.accent) + '20' },
+                  ]}
+                >
+                  <Text style={[styles.cloudBadgeText, { color: activeProfile?.color || theme.accent }]}>
+                    Activo
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
+                Avance, favoritos y notas independientes
+              </Text>
             </View>
           </View>
 
           <View style={[styles.divider, { backgroundColor: theme.bgDivider }]} />
 
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: theme.textCard }]}>Sincronización en la Nube</Text>
-              <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
-                Sincroniza avance, notas y marcadores entre dispositivos
-              </Text>
-            </View>
-            <Switch
-              value={cloudSyncEnabled}
-              onValueChange={setCloudSyncEnabled}
-              trackColor={{ false: theme.border, true: theme.accent }}
-              thumbColor={cloudSyncEnabled ? '#FFFFFF' : '#CBD5E1'}
-            />
-          </View>
+          <TouchableOpacity
+            style={styles.settingRowBtn}
+            onPress={() => setIsProfileModalVisible(true)}
+          >
+            <Feather name="users" size={20} color={theme.accent} style={{ marginRight: 12 }} />
+            <Text style={[styles.settingTitle, { color: theme.accent, fontWeight: '700' }]}>
+              Cambiar o Gestionar Perfiles
+            </Text>
+            <Feather name="chevron-right" size={18} color={theme.iconMuted} style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
         </View>
 
         {/* ── Almacenamiento ─────────────────────────────────── */}
@@ -587,6 +618,19 @@ export default function SettingsScreen() {
           )}
         </SafeAreaView>
       </Modal>
+
+      <ProfileManagerModal
+        visible={isProfileModalVisible}
+        onClose={() => setIsProfileModalVisible(false)}
+        onProfileChanged={(p) => {
+          setActiveProfile(p);
+          setToast({
+            visible: true,
+            message: `✓ Perfil cambiado a "${p.name}".`,
+            type: 'success',
+          });
+        }}
+      />
     </SafeAreaView>
   );
 }
