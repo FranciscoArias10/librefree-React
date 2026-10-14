@@ -427,18 +427,6 @@ export default function SettingsScreen() {
         {/* ── Almacenamiento ─────────────────────────────────── */}
         <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Almacenamiento Local</Text>
         <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
-          <View style={styles.settingRowBtn}>
-            <Feather name="database" size={20} color={theme.iconDefault} style={{ marginRight: 12 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: theme.textCard }]}>Base de Datos SQLite</Text>
-              <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
-                Estado: WAL Activo (Tablas de marcadores e historia)
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: theme.bgDivider }]} />
-
           <TouchableOpacity
             style={styles.settingRowBtn}
             onPress={() => setToast({ visible: true, message: '✓ Se ha liberado el espacio en la memoria temporal.', type: 'success' })}
