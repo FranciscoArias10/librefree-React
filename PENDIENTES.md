@@ -30,8 +30,8 @@
 #### 3. 🏷️ Sistema de Etiquetas para Libros
 - [x] **Etiquetas / Categorías Personalizadas**: Permitir crear y asignar etiquetas (*Estudio*, *Ficción*, *Favoritos*, *Por Leer*) a los libros para filtrarlos en la biblioteca.
 
-#### 4. 🗄️ Cuentas de Usuario y Base de Datos
-- [x] **Gestión de Perfiles Locales Offline**: Estructura de base de datos SQLite con tablas `profiles` y `profile_book_progress` para soportar múltiples perfiles de lectura independientes (avance, marcadores, favoritos) sin registro ni conexión obligatoria.
+#### 4. 👤 Perfiles de Usuario
+- [x] **Gestión de Perfiles Locales Offline**: Soporte para múltiples perfiles de lectura independientes (avance, marcadores, favoritos) de manera local y offline, sin registro ni conexión obligatoria.
 
 #### 5. ⚙️ Configuraciones Específicas por Formato (PDF vs EPUB)
 - [x] **Ajustes Independientes**: Separar las opciones de tipografía, tamaño de letra y márgenes para EPUB de las opciones de zoom y ajuste de ancho para PDF.
