@@ -6,6 +6,7 @@
 ---
 
 ### ✅ Tareas Completadas Recientemente
+- [x] **Marcadores y Notas de Página (Apartado 2)**: Sistema enriquecido de guardado y edición de marcadores con notas o comentarios de lectura, selección de color, visualización tanto en la lista de marcadores de la estantería (con búsqueda filtrable y edición directa) como en el lector mediante un modal dedicado (`BookmarkModal`) que permite crear, editar, eliminar y saltar directamente a la página del marcador (PDF, EPUB y TXT).
 - [x] **Escaneo Automático de Documentos del Dispositivo (SAF Android)**: Implementación de Storage Access Framework (SAF) para escaneo recurrente y automático de carpetas del celular (`Download`, `Documents`, `Books`, etc.), persistencia de la carpeta seleccionada en `AsyncStorage` para escaneo con 1 toque sin volver a solicitar permisos, detección de libros ya importados en biblioteca, extracción ultra rápida de portadas EPUB e interfaz mejorada en el modal "Documentos Encontrados".
 - [x] **Gestión de Perfiles Locales Offline**: Sistema multi-perfil 100% local (sin necesidad de cuentas ni internet) con avance de lectura, marcadores y favoritos independientes por perfil, selector dinámico en Estantería y Ajustes, y creación de perfiles con avatares de emoji y color temático.
 - [x] **Sistema de Etiquetas y Categorías Personalizadas**: Creación, asignación múltiple/lote y filtrado dinámico de etiquetas (*Estudio*, *Ficción*, *Favoritos*, *Por Leer*) en la estantería con badges de colores en `BookCard` y modal interactivo `AssignTagsModal`.
@@ -24,7 +25,7 @@
 - [x] **Selector de Voces de Expo Speech**: Permitir al usuario listar y elegir entre distintas voces instaladas en el sistema (voces masculinas, femeninas, acentos regionalizados de español) desde la pantalla de Ajustes.
 
 #### 2. 🔖 Marcadores y Recortes de Páginas
-- [ ] **Mejoras al Marcador de Páginas**: Refinar el sistema de guardado de posición/página, permitiendo agregar notas breves a cada marcador y visualizarlas de forma clara en la pantalla principal y en el lector.
+- [x] **Mejoras al Marcador de Páginas**: Refinar el sistema de guardado de posición/página, permitiendo agregar notas breves a cada marcador y visualizarlas de forma clara en la pantalla principal y en el lector.
 
 #### 3. 🏷️ Sistema de Etiquetas para Libros
 - [x] **Etiquetas / Categorías Personalizadas**: Permitir crear y asignar etiquetas (*Estudio*, *Ficción*, *Favoritos*, *Por Leer*) a los libros para filtrarlos en la biblioteca.
