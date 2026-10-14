@@ -408,7 +408,7 @@ export async function addBookmark(bookmark: Omit<Bookmark, 'id' | 'createdAt'>):
 
 export async function updateBookmark(
   id: string,
-  updates: Partial<Pick<Bookmark, 'note' | 'color' | 'chapterTitle'>>
+  updates: Partial<Pick<Bookmark, 'note' | 'color' | 'chapterTitle' | 'snippet'>>
 ): Promise<void> {
   const db = await getDB();
   const fields: string[] = [];
@@ -425,6 +425,10 @@ export async function updateBookmark(
   if (updates.chapterTitle !== undefined) {
     fields.push('chapterTitle = ?');
     values.push(updates.chapterTitle);
+  }
+  if (updates.snippet !== undefined) {
+    fields.push('snippet = ?');
+    values.push(updates.snippet);
   }
 
   if (fields.length > 0) {

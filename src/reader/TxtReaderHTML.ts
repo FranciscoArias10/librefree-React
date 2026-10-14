@@ -166,6 +166,23 @@ export function getTxtReaderHTML(
                 window.scrollTo({ top: p * totalHeight, behavior: 'auto' });
               }
             }
+          } else if (data.type === 'GO_TO_LOCATION' || data.type === 'JUMP_TO_PAGE') {
+            var loc = data.payload && (data.payload.location || data.payload.page || data.payload.cfi);
+            if (typeof loc === 'string' && loc.endsWith('%')) {
+              var pct = parseFloat(loc) / 100;
+              var totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+              if (totalHeight > 0) {
+                window.scrollTo({ top: pct * totalHeight, behavior: 'smooth' });
+              }
+            } else if (!isNaN(Number(loc))) {
+              var totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+              var num = Number(loc);
+              if (num <= 100) {
+                window.scrollTo({ top: (num / 100) * totalHeight, behavior: 'smooth' });
+              } else {
+                window.scrollTo({ top: num, behavior: 'smooth' });
+              }
+            }
           } else if (data.type === 'UPDATE_SETTINGS') {
             var s = data.payload;
             if (s.fontSize) document.body.style.fontSize = s.fontSize + 'px';

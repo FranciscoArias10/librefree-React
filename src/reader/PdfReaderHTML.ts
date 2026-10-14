@@ -1072,6 +1072,12 @@ export function getPdfReaderHTML(
             nextPage();
           } else if (data.type === 'PREV_PAGE') {
             prevPage();
+          } else if (data.type === 'JUMP_TO_PAGE' || data.type === 'GO_TO_PAGE' || data.type === 'GO_TO_LOCATION') {
+            var rawPage = (data.payload && (data.payload.page || data.payload.location)) || data.page || data.location;
+            var targetP = parseInt(rawPage, 10);
+            if (!isNaN(targetP) && targetP >= 1) {
+              renderPage(targetP);
+            }
           } else if (data.type === 'SEEK_PERCENT') {
             if (pdfDoc && pdfDoc.numPages > 0) {
               var targetPage = Math.max(1, Math.min(pdfDoc.numPages, Math.round((data.payload.percent / 100) * pdfDoc.numPages)));

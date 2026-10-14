@@ -17,17 +17,18 @@ import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark, getBookmarks, updateBookFilePath, DEFAULT_SETTINGS } from '../../services/database';
+import { getBookById, updateBookProgress, saveBookCover, saveExtractedBookText, getReadingSettings, saveReadingSettings, addBookmark, getBookmarks, deleteBookmark, updateBookmark, updateBookFilePath, DEFAULT_SETTINGS } from '../../services/database';
 import { readBookContent, ensureBooksDirectoryExists, copyFileToPermanentStorage, extractTextFromBook } from '../../services/fileScanner';
 import { getEpubReaderHTML } from '../../reader/EpubReaderHTML';
 import { getTxtReaderHTML } from '../../reader/TxtReaderHTML';
 import { getPdfReaderHTML } from '../../reader/PdfReaderHTML';
 import { ReaderControlsModal } from '../../components/ReaderControlsModal';
 import { AudioPlayerModal } from '../../components/AudioPlayerModal';
+import { BookmarkModal } from '../../components/BookmarkModal';
 import { speakText, stopSpeech, startTTSBook, stopTTS, splitTextIntoChunks, findMatchingChunkIndex, setTTSVoice } from '../../services/ttsService';
 import { Book, Bookmark, ReadingSettings } from '../../types/book';
 import { Toast } from '../../components/Toast';
-import { Feather, FontAwesome } from '@expo/vector-icons';
+import { Feather, FontAwesome, Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -227,11 +228,19 @@ export default function ReaderScreen() {
   const [pageLabel, setPageLabel] = useState<string>('Página 1');
   const [totalPages, setTotalPages] = useState<number>(350);
   const [barsVisible, setBarsVisible] = useState(true);
+  const [bookmarkModalVisible, setBookmarkModalVisible] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type?: 'success' | 'error' | 'info' }>({
     visible: false,
     message: '',
     type: 'success',
   });
+
+  const currentBookmark = useMemo(() => {
+    const pageNumStr = currentCfi || `${progress}%`;
+    return bookBookmarks.find(
+      (b) => b.cfiOrPage === pageNumStr || (currentChapter && b.chapterTitle === currentChapter)
+    );
+  }, [bookBookmarks, currentCfi, progress, currentChapter]);
 
   useEffect(() => {
     async function loadData() {
@@ -496,18 +505,87 @@ export default function ReaderScreen() {
     }
   };
 
-  const handleAddBookmark = async () => {
+  const handleSaveBookmarkFromModal = async (data: {
+    cfiOrPage: string;
+    chapterTitle?: string;
+    snippet?: string;
+    note?: string;
+    color?: string;
+    id?: string;
+  }) => {
     if (!book) return;
-    const pageNumStr = currentCfi || `${progress}%`;
-    const newBm = await addBookmark({
-      bookId: book.id,
-      cfiOrPage: pageNumStr,
-      chapterTitle: currentChapter || `Página ${pageNumStr}`,
-      snippet: selectedText || `Progreso ${progress}%`,
-      color: '#FACC15',
+    try {
+      if (data.id) {
+        await updateBookmark(data.id, {
+          note: data.note,
+          color: data.color,
+          snippet: data.snippet,
+          chapterTitle: data.chapterTitle,
+        });
+        setBookBookmarks((prev) =>
+          prev.map((b) =>
+            b.id === data.id
+              ? {
+                  ...b,
+                  note: data.note,
+                  color: data.color || b.color,
+                  snippet: data.snippet || b.snippet,
+                  chapterTitle: data.chapterTitle || b.chapterTitle,
+                }
+              : b
+          )
+        );
+        setToast({ visible: true, message: '✓ Marcador actualizado.', type: 'success' });
+      } else {
+        const newBm = await addBookmark({
+          bookId: book.id,
+          cfiOrPage: data.cfiOrPage,
+          chapterTitle: data.chapterTitle || currentChapter || `Página ${data.cfiOrPage}`,
+          snippet: data.snippet || selectedText || `Progreso ${progress}%`,
+          note: data.note,
+          color: data.color || '#FACC15',
+        });
+        setBookBookmarks((prev) => [newBm, ...prev]);
+        setToast({ visible: true, message: '✓ Marcador y nota guardados.', type: 'success' });
+      }
+    } catch (err: any) {
+      console.error('Error guardando marcador:', err);
+      setToast({ visible: true, message: 'Error al guardar marcador', type: 'error' });
+    }
+  };
+
+  const handleDeleteBookmarkFromModal = async (bookmarkId: string) => {
+    try {
+      await deleteBookmark(bookmarkId);
+      setBookBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId));
+      setToast({ visible: true, message: 'Marcador eliminado.', type: 'info' });
+    } catch (err) {
+      console.error('Error eliminando marcador:', err);
+      setToast({ visible: true, message: 'Error al eliminar marcador', type: 'error' });
+    }
+  };
+
+  const handleJumpToBookmark = (bm: Bookmark) => {
+    setBookmarkModalVisible(false);
+    if (!webViewRef.current) return;
+    if (book?.format === 'PDF') {
+      webViewRef.current.postMessage(
+        JSON.stringify({ type: 'JUMP_TO_PAGE', payload: { page: bm.cfiOrPage } })
+      );
+    } else if (book?.format === 'EPUB') {
+      webViewRef.current.postMessage(
+        JSON.stringify({ type: 'GO_TO_LOCATION', payload: { location: bm.cfiOrPage } })
+      );
+    } else {
+      webViewRef.current.postMessage(
+        JSON.stringify({ type: 'GO_TO_LOCATION', payload: { location: bm.cfiOrPage } })
+      );
+    }
+    setToast({
+      visible: true,
+      message: `Navegando a ${bm.chapterTitle || 'marcador'}...`,
+      type: 'info',
     });
-    setBookBookmarks((prev) => [newBm, ...prev]);
-    setToast({ visible: true, message: '✓ Posición guardada en tus marcadores.', type: 'success' });
   };
 
   const handleNextPage = () => {
@@ -701,9 +779,17 @@ export default function ReaderScreen() {
                 <Feather name="share-2" size={20} color={getTextColor()} />
               </TouchableOpacity>
 
-              {/* Bookmark Button */}
-              <TouchableOpacity style={styles.iconBtn} onPress={handleAddBookmark}>
-                <Feather name="bookmark" size={20} color={getTextColor()} />
+              {/* Bookmark & Notes Button */}
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => setBookmarkModalVisible(true)}
+                accessibilityLabel="Marcadores y Notas"
+              >
+                <Ionicons
+                  name={currentBookmark ? 'bookmark' : 'bookmark-outline'}
+                  size={20}
+                  color={currentBookmark ? (currentBookmark.color || '#F59E0B') : getTextColor()}
+                />
               </TouchableOpacity>
 
               {/* Settings Modal Button */}
@@ -819,6 +905,21 @@ export default function ReaderScreen() {
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
         format={book.format}
+      />
+
+      {/* Bookmark & Notes Modal */}
+      <BookmarkModal
+        visible={bookmarkModalVisible}
+        onClose={() => setBookmarkModalVisible(false)}
+        bookId={book.id}
+        bookTitle={book.title}
+        currentCfiOrPage={currentCfi || `${progress}%`}
+        currentChapter={currentChapter}
+        selectedText={selectedText}
+        bookmarks={bookBookmarks}
+        onSaveBookmark={handleSaveBookmarkFromModal}
+        onDeleteBookmark={handleDeleteBookmarkFromModal}
+        onJumpToBookmark={handleJumpToBookmark}
       />
     </SafeAreaView>
   );

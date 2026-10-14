@@ -886,6 +886,13 @@ export function getEpubReaderHTML(
             nextPage();
           } else if (data.type === 'PREV_PAGE') {
             prevPage();
+          } else if (data.type === 'GO_TO_LOCATION' || data.type === 'JUMP_TO_PAGE') {
+            if (rendition && data.payload) {
+              var loc = data.payload.location || data.payload.page || data.payload.cfi;
+              if (loc) {
+                rendition.display(loc);
+              }
+            }
           } else if (data.type === 'SEEK_PERCENT') {
             if (rendition && book) {
               var pct = data.payload.percent;
