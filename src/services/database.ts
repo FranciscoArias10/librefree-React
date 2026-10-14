@@ -68,6 +68,7 @@ export async function initDatabase(): Promise<void> {
       cfiOrPage TEXT NOT NULL,
       chapterTitle TEXT,
       snippet TEXT,
+      note TEXT,
       color TEXT DEFAULT '#FACC15',
       createdAt INTEGER NOT NULL,
       FOREIGN KEY (bookId) REFERENCES books (id) ON DELETE CASCADE
@@ -126,6 +127,10 @@ export async function initDatabase(): Promise<void> {
 
   try {
     await db.execAsync(`ALTER TABLE bookmarks ADD COLUMN profileId TEXT;`);
+  } catch (e) {}
+
+  try {
+    await db.execAsync(`ALTER TABLE bookmarks ADD COLUMN note TEXT;`);
   } catch (e) {}
 
   await seedDefaultProfile();
@@ -395,10 +400,41 @@ export async function addBookmark(bookmark: Omit<Bookmark, 'id' | 'createdAt'>):
   const color = bookmark.color || '#FACC15';
   const activeProfileId = bookmark.profileId || await getActiveProfileId();
   await db.runAsync(
-    `INSERT INTO bookmarks (id, bookId, profileId, cfiOrPage, chapterTitle, snippet, color, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-    [id, bookmark.bookId, activeProfileId, bookmark.cfiOrPage, bookmark.chapterTitle || null, bookmark.snippet || null, color, createdAt]
+    `INSERT INTO bookmarks (id, bookId, profileId, cfiOrPage, chapterTitle, snippet, note, color, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [id, bookmark.bookId, activeProfileId, bookmark.cfiOrPage, bookmark.chapterTitle || null, bookmark.snippet || null, bookmark.note || null, color, createdAt]
   );
   return { ...bookmark, id, profileId: activeProfileId, color, createdAt };
+}
+
+export async function updateBookmark(
+  id: string,
+  updates: Partial<Pick<Bookmark, 'note' | 'color' | 'chapterTitle'>>
+): Promise<void> {
+  const db = await getDB();
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (updates.note !== undefined) {
+    fields.push('note = ?');
+    values.push(updates.note || null);
+  }
+  if (updates.color !== undefined) {
+    fields.push('color = ?');
+    values.push(updates.color);
+  }
+  if (updates.chapterTitle !== undefined) {
+    fields.push('chapterTitle = ?');
+    values.push(updates.chapterTitle);
+  }
+
+  if (fields.length > 0) {
+    values.push(id);
+    await db.runAsync(`UPDATE bookmarks SET ${fields.join(', ')} WHERE id = ?;`, values);
+  }
+}
+
+export async function updateBookmarkNote(id: string, note: string): Promise<void> {
+  return updateBookmark(id, { note });
 }
 
 export async function deleteBookmark(id: string): Promise<void> {
