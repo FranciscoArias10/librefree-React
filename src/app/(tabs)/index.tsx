@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { getAllBooks, toggleFavorite, deleteBook, getAllBookmarks, deleteBookmark, getAllTags, setBookTags, addTagToBooks, getActiveProfile } from '../../services/database';
+import { getAllBooks, toggleFavorite, deleteBook, getAllBookmarks, deleteBookmark, updateBookmark, getAllTags, setBookTags, addTagToBooks, getActiveProfile } from '../../services/database';
 import { pickMultipleBooksByFormat, bulkImportBooks } from '../../services/fileScanner';
 import { BookCard } from '../../components/BookCard';
 import { BookmarkItemCard, BookmarkWithBookInfo } from '../../components/BookmarkItemCard';
@@ -25,6 +25,7 @@ import { Toast } from '../../components/Toast';
 import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal';
 import { AssignTagsModal } from '../../components/AssignTagsModal';
 import { ProfileManagerModal } from '../../components/ProfileManagerModal';
+import { EditBookmarkNoteModal } from '../../components/EditBookmarkNoteModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Book, Tag, Profile } from '../../types/book';
 import { Feather } from '@expo/vector-icons';
@@ -35,6 +36,7 @@ export default function BookshelfScreen() {
   const { theme } = useTheme();
   const [books, setBooks] = useState<Book[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkWithBookInfo[]>([]);
+  const [editingBookmark, setEditingBookmark] = useState<BookmarkWithBookInfo | null>(null);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
@@ -215,6 +217,26 @@ export default function BookshelfScreen() {
     }
   };
 
+  const handleSaveBookmarkNote = async (id: string, note: string, color?: string) => {
+    try {
+      await updateBookmark(id, { note, color });
+      setBookmarks((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, note, color: color || b.color } : b))
+      );
+      setToast({
+        visible: true,
+        message: '✓ Nota guardada correctamente.',
+        type: 'success',
+      });
+    } catch (err) {
+      setToast({
+        visible: true,
+        message: 'Error al guardar la nota.',
+        type: 'error',
+      });
+    }
+  };
+
   const handleOpenBookmark = (bm: BookmarkWithBookInfo) => {
     router.push({
       pathname: '/reader/[id]',
@@ -340,7 +362,8 @@ export default function BookshelfScreen() {
     return (
       (bm.snippet && bm.snippet.toLowerCase().includes(q)) ||
       (bm.bookTitle && bm.bookTitle.toLowerCase().includes(q)) ||
-      (bm.chapterTitle && bm.chapterTitle.toLowerCase().includes(q))
+      (bm.chapterTitle && bm.chapterTitle.toLowerCase().includes(q)) ||
+      (bm.note && bm.note.toLowerCase().includes(q))
     );
   });
 
@@ -531,6 +554,7 @@ export default function BookshelfScreen() {
                 bookmark={item}
                 onPress={handleOpenBookmark}
                 onDelete={handleDeleteBookmark}
+                onEditNote={(bm) => setEditingBookmark(bm)}
               />
             )}
           />
@@ -621,6 +645,14 @@ export default function BookshelfScreen() {
             type: 'success',
           });
         }}
+      />
+      <EditBookmarkNoteModal
+        visible={!!editingBookmark}
+        bookmark={editingBookmark}
+        bookTitle={editingBookmark?.bookTitle}
+        onClose={() => setEditingBookmark(null)}
+        onSave={handleSaveBookmarkNote}
+        onDelete={handleDeleteBookmark}
       />
     </SafeAreaView>
   );

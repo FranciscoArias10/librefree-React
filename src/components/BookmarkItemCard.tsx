@@ -15,12 +15,14 @@ interface BookmarkItemCardProps {
   bookmark: BookmarkWithBookInfo;
   onPress: (bookmark: BookmarkWithBookInfo) => void;
   onDelete: (id: string) => void;
+  onEditNote?: (bookmark: BookmarkWithBookInfo) => void;
 }
 
 export const BookmarkItemCard: React.FC<BookmarkItemCardProps> = ({
   bookmark,
   onPress,
   onDelete,
+  onEditNote,
 }) => {
   const { theme } = useTheme();
   const highlightColor = bookmark.color || '#FACC15';
@@ -106,7 +108,7 @@ export const BookmarkItemCard: React.FC<BookmarkItemCardProps> = ({
           </View>
         </View>
 
-        {/* Highlighted text snippet & Footer click area */}
+        {/* Highlighted text snippet */}
         <TouchableOpacity onPress={() => onPress(bookmark)} activeOpacity={0.75}>
           <View
             style={[
@@ -121,7 +123,56 @@ export const BookmarkItemCard: React.FC<BookmarkItemCardProps> = ({
               "{bookmark.snippet || bookmark.chapterTitle || 'Sin texto resaltado'}"
             </Text>
           </View>
+        </TouchableOpacity>
 
+        {/* Note / Comment block */}
+        {bookmark.note && bookmark.note.trim().length > 0 ? (
+          <View
+            style={[
+              styles.noteBox,
+              {
+                backgroundColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#F8FAFC',
+                borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
+              },
+            ]}
+          >
+            <View style={styles.noteHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Feather name="edit-3" size={13} color={theme.accent} style={{ marginRight: 6 }} />
+                <Text style={[styles.noteHeaderLabel, { color: theme.accent }]}>Nota personal</Text>
+              </View>
+              {onEditNote && (
+                <TouchableOpacity
+                  onPress={() => onEditNote(bookmark)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.editActionText, { color: theme.accent }]}>Editar</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={[styles.noteText, { color: theme.textCard }]} numberOfLines={4}>
+              {bookmark.note}
+            </Text>
+          </View>
+        ) : onEditNote ? (
+          <TouchableOpacity
+            style={[
+              styles.addNoteChip,
+              {
+                backgroundColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : '#F1F5F9',
+                borderColor: theme.border,
+              },
+            ]}
+            onPress={() => onEditNote(bookmark)}
+            activeOpacity={0.7}
+          >
+            <Feather name="plus-circle" size={13} color={theme.textSecondary} style={{ marginRight: 6 }} />
+            <Text style={[styles.addNoteChipText, { color: theme.textSecondary }]}>Agregar nota a este marcador</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Footer click area */}
+        <TouchableOpacity onPress={() => onPress(bookmark)} activeOpacity={0.75}>
           <View style={styles.footer}>
             <Text style={[styles.dateText, { color: theme.textSecondary }]}>
               {formatDate(bookmark.createdAt)}
@@ -246,6 +297,46 @@ const styles = StyleSheet.create({
   },
   jumpText: {
     fontSize: 12,
+    fontWeight: '600',
+  },
+  noteBox: {
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  noteHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  noteHeaderLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  editActionText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  noteText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  addNoteChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  addNoteChipText: {
+    fontSize: 11,
     fontWeight: '600',
   },
 });
